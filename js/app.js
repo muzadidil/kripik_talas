@@ -16,7 +16,7 @@ const TEMPO_BULAN = 2;
 /** Tampil di menu ⋮ — untuk memastikan browser tidak menjalankan versi lama
  *  dari cache. Sengaja di sini, bukan di config.js: config.js adalah berkas
  *  yang kamu sunting sendiri, sedangkan ini ikut tiap deploy. */
-const VERSI = '2026-09-07 · 6';
+const VERSI = '2026-09-07 · 7';
 
 /* ============================================================
    GERBANG KATA SANDI
@@ -182,7 +182,7 @@ async function vBeranda(w) {
     ? `<div class="ledger">${r.belum
         .slice()
         .sort((a, b) => (keDate(a.jatuh_tempo) ?? 8e15) - (keDate(b.jatuh_tempo) ?? 8e15))
-        .map(barisPengambilan).join('')}</div>`
+        .map(barisHutang).join('')}</div>`
     : `<div class="kosong"><h3>Tidak ada hutang berjalan</h3>
          <p>Semua pengambilan sudah lunas.</p>
          <a class="btn btn-primary" href="#/ambil/baru">Catat pengambilan</a></div>`;
@@ -219,7 +219,9 @@ async function vBeranda(w) {
     ${daftar}`;
 }
 
-function barisPengambilan(p) {
+/** Satu baris hutang berjalan di Beranda. Bukan nota — itu barisPengambilan()
+ *  dari nota.js, yang namanya sengaja dibedakan supaya tidak bentrok. */
+function barisHutang(p) {
   const t = tempoTeks(p.jatuh_tempo);
   const bks = (p.items || []).reduce((n, i) => n + i.qty, 0);
   return `<button class="baris ${t.kelas}" data-lihat="${p.id}">
