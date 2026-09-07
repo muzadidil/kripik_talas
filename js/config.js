@@ -27,6 +27,10 @@ export const usaha = {
 // Berapa bungkus dalam 1 ball.
 export const ISI_PER_BALL = 10;
 
+// Penanda versi — tampil di menu ⋮. Berguna untuk memastikan browser
+// tidak sedang menjalankan versi lama dari cache. Naikkan tiap deploy.
+export const VERSI = '2026-09-07 · 5';
+
 // ============================================================
 //  Kata sandi masuk ke aplikasi.
 //  PERINGATAN: ini hanya penghalang tampilan, bukan keamanan data.

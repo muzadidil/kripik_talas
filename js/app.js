@@ -1,4 +1,4 @@
-import { usaha, ISI_PER_BALL, APP_PASSWORD } from './config.js';
+import { usaha, ISI_PER_BALL, APP_PASSWORD, VERSI } from './config.js';
 import {
   rp, angka, bacaAngka, ball, tgl, tglPanjang, tempoTeks, selisihHari,
   hariIni, dariInput, plusBulan, keDate, $, $$, aman, toast,
@@ -61,7 +61,25 @@ $('#menuBtn').onclick = () => {
     <button class="sheet-menu" data-go="#/produk">Produk<small>Harga beli dan harga titip</small></button>
     <button class="sheet-menu" data-go="#/stok">Stok gudang<small>Lihat umur stok, keluarkan yang tua dulu</small></button>
     <button class="sheet-menu" id="mExport">Simpan cadangan<small>Unduh semua data sebagai file JSON</small></button>
-    <button class="sheet-menu" id="mKeluar" style="color:var(--merah)">Keluar</button>`);
+    <button class="sheet-menu" id="mSegar">Muat ulang versi terbaru<small>Pakai kalau ada yang aneh setelah aplikasi diperbarui</small></button>
+    <button class="sheet-menu" id="mKeluar" style="color:var(--merah)">Keluar</button>
+    <p class="field-hint" style="text-align:center;margin-top:16px">Versi ${aman(VERSI)}</p>`);
+
+  $('#mSegar').onclick = async () => {
+    tutupSheet();
+    toast('Mengambil versi terbaru…');
+    // Mengganti query di URL hanya menyegarkan index.html — modul JS di
+    // dalamnya tetap diambil dari cache. Jadi tiap berkas ditarik ulang
+    // dengan cache:'reload', yang sekalian memperbarui isi cache browser,
+    // baru halaman dimuat ulang.
+    const berkas = [
+      'index.html', 'assets/style.css',
+      'js/app.js', 'js/store.js', 'js/util.js', 'js/nota.js', 'js/config.js'
+    ];
+    await Promise.all(berkas.map(f =>
+      fetch(f, { cache: 'reload' }).catch(() => {})));
+    location.reload();
+  };
 
   $$('[data-go]').forEach(b => b.onclick = () => { tutupSheet(); location.hash = b.dataset.go; });
 
