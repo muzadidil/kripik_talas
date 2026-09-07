@@ -4,12 +4,12 @@
 // ============================================================
 
 export const firebaseConfig = {
-  apiKey:            "GANTI_API_KEY",
-  authDomain:        "GANTI.firebaseapp.com",
-  projectId:         "GANTI_PROJECT_ID",
-  storageBucket:     "GANTI.appspot.com",
-  messagingSenderId: "GANTI",
-  appId:             "GANTI"
+  apiKey:            "AIzaSyDGsfHXmGNfL9T4aQFnF7nOKHZ6oNYCa-s",
+  authDomain:        "kripik-zasha.firebaseapp.com",
+  projectId:         "kripik-zasha",
+  storageBucket:     "kripik-zasha.firebasestorage.app",
+  messagingSenderId: "332256212762",
+  appId:             "1:332256212762:web:93bf76611ec00a280adea3"
 };
 
 // ============================================================
