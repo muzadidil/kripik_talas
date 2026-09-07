@@ -125,6 +125,69 @@ export function barisRetur(r) {
   return [...b, ...kaki(r.catatan)];
 }
 
+/** Nota kunjungan ke warung — bukti untuk pemilik warung. */
+export function barisKunjungan(k) {
+  const b = [
+    ...kepala('NOTA WARUNG'),
+    P('No.', k.no),
+    P('Tanggal', tgl(k.tanggal)),
+    P('Warung', k.warung_nama),
+    G(),
+    T('Barang laku:')
+  ];
+
+  const laku = k.items.filter(i => i.laku > 0);
+  if (laku.length) {
+    laku.forEach(i => {
+      b.push(P(' ' + i.nama, `${i.laku} bks`));
+      b.push(T(`   ${i.laku} x ${rp(i.harga_titip)} = ${rp(i.laku * i.harga_titip)}`));
+    });
+  } else {
+    b.push(T(' (tidak ada yang laku)'));
+  }
+
+  b.push(G());
+  if (k.piutang_sebelum > 0) b.push(P('Sisa tagihan lalu', rp(k.piutang_sebelum)));
+  b.push(P('Nilai laku', rp(k.nilai_laku)));
+  b.push(PB('Total tagihan', rp(k.tagihan)));
+  b.push(PB('Dibayar', rp(k.dibayar)));
+  b.push(P('Sisa tagihan', rp(k.piutang_sesudah)));
+
+  const basi = k.items.filter(i => i.basi > 0);
+  if (basi.length) {
+    b.push(G(), T('Barang basi ditarik:'));
+    basi.forEach(i => b.push(P(' ' + i.nama, `${i.basi} bks`)));
+  }
+
+  const titip = k.items.filter(i => i.titip_baru > 0);
+  if (titip.length) {
+    b.push(G(), T('Titipan baru:'));
+    titip.forEach(i => b.push(P(' ' + i.nama, `${i.titip_baru} bks`)));
+  }
+
+  const sisa = k.items.filter(i => i.stok_akhir > 0);
+  if (sisa.length) {
+    b.push(G(), T('Barang tinggal di warung:'));
+    sisa.forEach(i => b.push(P(' ' + i.nama, `${i.stok_akhir} bks`)));
+  }
+
+  return [...b, ...kakiWarung(k.catatan, k.warung_nama)];
+}
+
+function kakiWarung(catatan, warungNama) {
+  const b = [G()];
+  if (catatan) { b.push(T(catatan), G()); }
+  b.push(
+    S(), T(`Diterima ${warungNama || 'warung'},`), S(3),
+    T('(............................)'), S(),
+    T('Dicetak ' + new Date().toLocaleString('id-ID', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    }))
+  );
+  return b;
+}
+
 /* ---------- render PDF ---------- */
 
 const TINGGI = { kop: 5.4, teks: 4.3, pasang: 4.3, garis: 3.4, spasi: 2.6 };

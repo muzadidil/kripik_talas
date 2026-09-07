@@ -1,7 +1,11 @@
-# Buku Kripik — Tahap 1
+# Buku Kripik
 
-Catatan hutang ke produsen untuk usaha kripik. Web statis, jalan di GitHub Pages,
-data di Firestore. Tidak perlu server, tidak perlu build, tidak perlu npm.
+Catatan hutang ke distributor dan titipan ke warung untuk usaha kripik. Web statis,
+jalan di GitHub Pages, data di Firestore. Tidak perlu server, tidak perlu build,
+tidak perlu npm.
+
+Alurnya dua arah: **distributor → kamu** (ambil barang, bayar hutang, retur basi) dan
+**kamu → warung** (titip barang, terima uang saat laku, tarik yang basi).
 
 **Satuan sistem adalah bungkus.** Layar produsen menampilkan ball (1 ball = 10 bungkus).
 Ini disengaja: warung membeli per bungkus, jadi kalau sistem menyimpan ball, angkanya
@@ -73,9 +77,13 @@ lalu centang **Enforce HTTPS** di Settings → Pages.
 
 ### 7. Mulai pakai
 
-Buka `kripik.zasha.online`, masukkan kata sandi, lalu **menu ⋮ → Produk**.
-Daftarkan kripik singkong, talas original, talas balado.
-Setelah itu **Ambil** untuk mencatat pengambilan pertama.
+Buka `kripik.zasha.online`, masukkan kata sandi, lalu urutannya:
+
+1. **Menu ⋮ → Produk** — daftarkan kripik singkong, talas original, talas balado
+   beserta harga beli dan harga titipnya
+2. **Ambil** — catat pengambilan pertama dari distributor
+3. **Warung** — daftarkan warung, lalu **Catat kunjungan** untuk menitipkan barang
+4. **Laporan** — semua angkanya muncul di sini setelah ada data
 
 ---
 
@@ -94,6 +102,16 @@ yang persis sama. Buka tab **Nota**.
 memotong hutang. Yang memotong hutang masuk alokasi FIFO seperti setoran.
 Yang ditukar tidak mengubah hutang dan tidak membuat batch baru.
 
+**Kunjungan warung menyelesaikan semuanya sekaligus.** Satu form: hitung sisa fisik
+di rak, sistem menghitung sendiri berapa yang laku (`stok tercatat − sisa − basi`),
+lalu kamu isi uang yang diterima dan barang yang dititipkan lagi. Kurang bayar jadi
+piutang warung, kelebihan tidak hilang. Warung boleh nyicil atau lunas, sistem tidak
+memaksa.
+
+**Untung dihitung hanya dari yang benar-benar laku.** `laku × (harga titip − harga
+beli)`. Barang yang masih di gudang atau masih di rak warung belum dihitung untung —
+itu masih modal tertahan, bukan laba.
+
 **Offline.** Firestore menyimpan cache di HP. Kalau sinyal hilang di jalan, aplikasi
 tetap terbuka dan bisa dibaca. Perubahan tersinkron sendiri saat sinyal kembali.
 
@@ -107,11 +125,14 @@ pengambilan       no, tanggal, items[], total,
                   terbayar, sisa, jatuh_tempo, lunas
 setoran_produsen  no, tanggal, jumlah, alokasi[]
 retur_produsen    no, tanggal, items[], nilai_potong, alokasi[]
-counters/nota     penomoran berurutan: ambil, setor, retur
+warung            nama, pemilik, hp, alamat,
+                  stok{produk_id: {nama, qty, harga_titip}},
+                  piutang, kunjungan_terakhir
+kunjungan_warung  no, warung_id, tanggal, items[],
+                  nilai_laku, untung, dibayar,
+                  piutang_sebelum, piutang_sesudah
+counters/nota     penomoran berurutan: ambil, setor, retur, kunjungan
 ```
-
-`warung` dan `mutasi_warung` menyusul di Tahap 2. Strukturnya sudah disiapkan
-di fungsi export, jadi tidak perlu bongkar data.
 
 ---
 
@@ -130,15 +151,14 @@ berhak curiga. Jangan edit data dari console.
 
 ---
 
-## Belum ada di Tahap 1
+## Belum ada
 
-- Warung: titip, setoran bertahap, retur bagus, retur basi
 - Peta lokasi warung (Leaflet + OpenStreetMap, gratis, tanpa kartu kredit)
-- Daftar "warung perlu dicek"
-- Stok gudang masih hanya menghitung barang masuk
-
-Layar **Stok gudang** sudah ada tapi belum dikurangi titipan ke warung.
-Angkanya baru akurat setelah Tahap 2.
+- Barang basi yang ditarik dari warung belum otomatis masuk ke form Retur —
+  masih harus diketik ulang di tab Retur saat mau dikembalikan ke distributor
+- Grafik tren penjualan per bulan
+- Belum ada pencarian/filter di daftar warung (belum perlu selama warungnya
+  masih sedikit)
 
 ---
 

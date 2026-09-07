@@ -4,7 +4,7 @@ import {
   hariIni, dariInput, keDate, $, $$, aman, toast, bukaSheet, tutupSheet, konfirmasi
 } from './util.js';
 import * as S from './store.js';
-import { barisSetoran, barisRetur, pratinjauHTML, kirimPDF } from './nota.js';
+import { barisSetoran, barisRetur, barisKunjungan, pratinjauHTML, kirimPDF } from './nota.js';
 
 /* ============================================================
    GERBANG KATA SANDI
@@ -49,6 +49,8 @@ $('#gPass').addEventListener('keydown', e => { if (e.key === 'Enter') $('#gBtn')
 $('#menuBtn').onclick = () => {
   bukaSheet(`
     <h2 class="sheet-judul">Lainnya</h2>
+    <button class="sheet-menu" data-go="#/setor">Setor ke distributor<small>Bayar hutang pengambilan</small></button>
+    <button class="sheet-menu" data-go="#/retur">Retur ke distributor<small>Kembalikan barang basi</small></button>
     <button class="sheet-menu" data-go="#/produk">Produk<small>Harga beli dan harga titip</small></button>
     <button class="sheet-menu" data-go="#/stok">Stok gudang<small>Lihat umur stok, keluarkan yang tua dulu</small></button>
     <button class="sheet-menu" id="mExport">Simpan cadangan<small>Unduh semua data sebagai file JSON</small></button>
@@ -85,22 +87,24 @@ $('#menuBtn').onclick = () => {
 
 const RUTE = {
   beranda: { judul: 'Beranda',      tab: 'beranda', render: vBeranda },
+  warung:  { judul: 'Warung',       tab: 'warung',  render: vWarung },
   ambil:   { judul: 'Pengambilan',  tab: 'ambil',   render: vAmbil },
-  setor:   { judul: 'Setoran',      tab: 'setor',   render: vSetor },
-  retur:   { judul: 'Retur',        tab: 'retur',   render: vRetur },
   nota:    { judul: 'Riwayat nota', tab: 'nota',    render: vNota },
+  laporan: { judul: 'Laporan',      tab: 'laporan', render: vLaporan },
+  setor:   { judul: 'Setoran',      tab: '',        render: vSetor },
+  retur:   { judul: 'Retur',        tab: '',        render: vRetur },
   produk:  { judul: 'Produk',       tab: '',        render: vProduk },
   stok:    { judul: 'Stok gudang',  tab: '',        render: vStok }
 };
 
 function pecahRute() {
   const bagian = (location.hash || '#/beranda').replace(/^#\/?/, '').split('/');
-  return { nama: bagian[0] || 'beranda', anak: bagian[1] || '' };
+  return { nama: bagian[0] || 'beranda', anak: bagian[1] || '', cucu: bagian[2] || '' };
 }
 
 async function jalankanRute() {
   if ($('#shell').hidden) return;
-  const { nama, anak } = pecahRute();
+  const { nama, anak, cucu } = pecahRute();
   const r = RUTE[nama] || RUTE.beranda;
 
   $('#viewTitle').textContent = r.judul;
@@ -112,7 +116,7 @@ async function jalankanRute() {
   window.scrollTo(0, 0);
 
   try {
-    await r.render(wadah, anak);
+    await r.render(wadah, anak, cucu);
   } catch (e) {
     console.error(e);
     wadah.innerHTML = `<div class="peringatan">Gagal memuat: ${aman(e.message || e)}</div>
@@ -127,8 +131,15 @@ addEventListener('hashchange', jalankanRute);
    ============================================================ */
 
 async function vBeranda(w) {
-  const r = await S.ringkasan();
+  const [r, warung] = await Promise.all([S.ringkasan(), S.ambilWarung()]);
   const tempo = r.berikut ? tempoTeks(r.berikut.jatuh_tempo) : null;
+
+  const endap = warung.reduce((n, x) => n + S.nilaiDiWarung(x) + (x.piutang || 0), 0);
+  const bksWarung = warung.reduce((n, x) => n + S.bungkusDiWarung(x), 0);
+  const perluCek = warung.filter(x => {
+    const h = x.kunjungan_terakhir ? Math.abs(selisihHari(x.kunjungan_terakhir)) : null;
+    return (h === null || h >= 7) && S.bungkusDiWarung(x) > 0;
+  });
 
   const peringatan = r.jumlahLewat
     ? `<div class="peringatan">${r.jumlahLewat} pengambilan sudah lewat jatuh tempo, senilai ${rp(r.nilaiLewat)}. Hubungi produsen hari ini.</div>`
@@ -143,8 +154,13 @@ async function vBeranda(w) {
          <p>Semua pengambilan sudah lunas.</p>
          <a class="btn btn-primary" href="#/ambil/baru">Catat pengambilan</a></div>`;
 
+  const cekWarung = perluCek.length
+    ? `<div class="catatan">${perluCek.length} warung belum dicek seminggu lebih: ${aman(perluCek.slice(0, 3).map(x => x.nama).join(', '))}${perluCek.length > 3 ? ', dan lainnya' : ''}.</div>`
+    : '';
+
   w.innerHTML = `
     ${peringatan}
+    ${cekWarung}
     <section class="kop">
       <p class="kop-label">Hutang ke ${aman(usaha.produsen)}</p>
       <p class="kop-angka">${rp(r.totalHutang)}</p>
@@ -154,11 +170,16 @@ async function vBeranda(w) {
         <div><p>Jatuh tempo terdekat</p><p class="${tempo?.kelas === 'jatuh' ? 'merah' : ''}">${tempo ? aman(tempo.teks) : '—'}</p></div>
         <div><p>Tanggalnya</p><p>${r.berikut ? tgl(r.berikut.jatuh_tempo) : '—'}</p></div>
       </div>
+      <div class="kop-pisah"></div>
+      <div class="kop-grid">
+        <div><p>Uang endap di warung</p><p>${rp(endap)}</p></div>
+        <div><p>Barang di warung</p><p>${bksWarung} bks</p></div>
+      </div>
     </section>
 
     <div class="btn-baris">
-      <a class="btn btn-primary" href="#/setor">Setor uang</a>
-      <a class="btn btn-garis" href="#/ambil/baru">Catat ambil</a>
+      <a class="btn btn-primary" href="#/warung">Cek warung</a>
+      <a class="btn btn-garis" href="#/setor">Setor uang</a>
     </div>
 
     <div class="bagian"><h2>Hutang berjalan</h2><span>urut jatuh tempo</span></div>
@@ -328,6 +349,343 @@ function rincianPengambilan(p) {
     <div class="rincian-baris"><span>Status</span><span>${aman(t.teks)}</span></div>
     ${p.catatan ? `<p style="margin-top:12px;color:var(--tinta-lembut);font-size:.88rem">${aman(p.catatan)}</p>` : ''}
     <button class="btn btn-garis btn-block" style="margin-top:24px" data-close>Tutup</button>`);
+}
+
+/* ============================================================
+   WARUNG
+   ============================================================ */
+
+async function vWarung(w, anak, cucu) {
+  if (anak === 'kunjungan' && cucu) return formKunjungan(w, cucu);
+
+  const daftar = await S.ambilWarung();
+
+  if (!daftar.length) {
+    w.innerHTML = `<div class="kosong"><h3>Belum ada warung</h3>
+      <p>Daftarkan warung tempat kamu menitipkan barang.</p></div>
+      <button class="btn btn-primary btn-block" id="wBaru" style="margin-top:16px">Tambah warung</button>`;
+    $('#wBaru').onclick = () => formWarung();
+    return;
+  }
+
+  const totalTitip   = daftar.reduce((n, x) => n + S.bungkusDiWarung(x), 0);
+  const totalPiutang = daftar.reduce((n, x) => n + (x.piutang || 0), 0);
+  const totalNilai   = daftar.reduce((n, x) => n + S.nilaiDiWarung(x), 0);
+
+  w.innerHTML = `
+    <div class="rincian">
+      <h3>Uang kamu yang ada di warung</h3>
+      <div class="rincian-baris"><span>Barang tertitip (${totalTitip} bks)</span><span>${rp(totalNilai)}</span></div>
+      <div class="rincian-baris"><span>Belum dibayar warung</span><span>${rp(totalPiutang)}</span></div>
+      <div class="rincian-baris" style="border-top:1px solid var(--cap);margin-top:8px;padding-top:8px">
+        <span>Total endap</span><span>${rp(totalNilai + totalPiutang)}</span></div>
+    </div>
+
+    <button class="btn btn-primary btn-block" id="wBaru" style="margin-bottom:16px">Tambah warung</button>
+
+    <div class="ledger">${daftar.map(x => {
+      const bks   = S.bungkusDiWarung(x);
+      const hari  = x.kunjungan_terakhir ? Math.abs(selisihHari(x.kunjungan_terakhir)) : null;
+      const perlu = hari === null || hari >= 7;
+      return `<button class="baris ${perlu ? 'dekat' : bks ? 'aman' : 'lunas'}" data-warung="${x.id}">
+        <div class="baris-atas">
+          <span class="baris-judul">${aman(x.nama)}</span>
+          <span class="baris-nilai">${bks} bks</span>
+        </div>
+        <div class="baris-bawah">
+          <span>${x.piutang > 0 ? `<span class="merah">belum bayar ${rp(x.piutang)}</span>` : 'tidak ada tagihan'}</span>
+          <span>${hari === null ? 'belum pernah dicek' : hari === 0 ? 'dicek hari ini' : `${hari} hari lalu`}</span>
+        </div></button>`;
+    }).join('')}</div>`;
+
+  $('#wBaru').onclick = () => formWarung();
+  $$('[data-warung]').forEach(b =>
+    b.onclick = () => rincianWarung(daftar.find(x => x.id === b.dataset.warung)));
+}
+
+function rincianWarung(x) {
+  if (!x) return;
+  const stok = Object.values(x.stok || {});
+  const bks  = S.bungkusDiWarung(x);
+
+  bukaSheet(`
+    <h2 class="sheet-judul">${aman(x.nama)}</h2>
+    ${x.pemilik || x.hp ? `<p style="color:var(--tinta-lembut);font-size:.88rem;margin-bottom:12px">
+      ${aman(x.pemilik || '')}${x.pemilik && x.hp ? ' · ' : ''}${aman(x.hp || '')}</p>` : ''}
+    ${x.alamat ? `<p style="color:var(--tinta-lembut);font-size:.88rem;margin-bottom:16px">${aman(x.alamat)}</p>` : ''}
+
+    <div class="rincian">
+      <h3>Barang tertitip sekarang</h3>
+      ${stok.length
+        ? stok.map(s => `<div class="rincian-baris"><span>${aman(s.nama)}</span><span>${s.qty} bks</span></div>`).join('')
+        : '<div class="rincian-baris"><span>Kosong</span><span>0 bks</span></div>'}
+      <div class="rincian-baris" style="border-top:1px solid var(--cap);margin-top:8px;padding-top:8px">
+        <span>Nilai titipan</span><span>${rp(S.nilaiDiWarung(x))}</span></div>
+      <div class="rincian-baris"><span>Belum dibayar</span><span>${rp(x.piutang || 0)}</span></div>
+    </div>
+
+    <div class="rincian-baris"><span>Dicek terakhir</span><span>${x.kunjungan_terakhir ? tglPanjang(x.kunjungan_terakhir) : 'belum pernah'}</span></div>
+    ${x.catatan ? `<p style="margin-top:12px;color:var(--tinta-lembut);font-size:.88rem">${aman(x.catatan)}</p>` : ''}
+
+    <button class="btn btn-primary btn-block" id="wKunjung" style="margin-top:24px;margin-bottom:12px">Catat kunjungan</button>
+    <button class="btn btn-garis btn-block" id="wUbah">Ubah data warung</button>`);
+
+  $('#wKunjung').onclick = () => { tutupSheet(); location.hash = `#/warung/kunjungan/${x.id}`; };
+  $('#wUbah').onclick    = () => { tutupSheet(); formWarung(x); };
+}
+
+function formWarung(x = null) {
+  bukaSheet(`
+    <h2 class="sheet-judul">${x ? 'Ubah warung' : 'Warung baru'}</h2>
+    <label class="field"><span>Nama warung</span>
+      <input id="wNama" value="${aman(x?.nama || '')}" placeholder="Warung Bu Sri"></label>
+    <div class="duo">
+      <label class="field"><span>Pemilik</span>
+        <input id="wPemilik" value="${aman(x?.pemilik || '')}" placeholder="Bu Sri"></label>
+      <label class="field"><span>Nomor HP</span>
+        <input id="wHp" type="tel" inputmode="tel" value="${aman(x?.hp || '')}" placeholder="08..."></label>
+    </div>
+    <label class="field"><span>Alamat / patokan</span>
+      <input id="wAlamat" value="${aman(x?.alamat || '')}" placeholder="depan SD, jalan Kalimantan"></label>
+    <label class="field"><span>Catatan</span>
+      <input id="wCatatan" value="${aman(x?.catatan || '')}" placeholder="mis. bayarnya suka telat"></label>
+    <button class="btn btn-primary btn-block" id="wSimpan" style="margin-bottom:12px">Simpan</button>
+    ${x ? `<button class="btn btn-bahaya btn-block" id="wHapus">Hapus warung</button>` : ''}`);
+
+  $('#wSimpan').onclick = async () => {
+    const nama = $('#wNama').value.trim();
+    if (!nama) return toast('Nama warung belum diisi.', true);
+    try {
+      await S.simpanWarung({
+        nama,
+        pemilik: $('#wPemilik').value.trim(),
+        hp:      $('#wHp').value.trim(),
+        alamat:  $('#wAlamat').value.trim(),
+        catatan: $('#wCatatan').value.trim(),
+        aktif:   true
+      }, x?.id);
+      tutupSheet(); toast('Warung tersimpan.'); jalankanRute();
+    } catch { toast('Gagal menyimpan warung.', true); }
+  };
+
+  if (x) $('#wHapus').onclick = async () => {
+    tutupSheet();
+    const bks  = S.bungkusDiWarung(x);
+    const utang = x.piutang || 0;
+    if (bks > 0 || utang > 0) {
+      toast(`Tidak bisa dihapus: masih ada ${bks} bks titipan dan ${rp(utang)} belum dibayar.`, true);
+      return;
+    }
+    if (!await konfirmasi({
+      judul: `Hapus ${x.nama}?`,
+      pesan: 'Riwayat kunjungan tetap tersimpan dan tetap bisa dicetak.',
+      aksi: 'Hapus', bahaya: true
+    })) return;
+    try { await S.hapusWarung(x.id); toast('Warung dihapus.'); jalankanRute(); }
+    catch { toast('Gagal menghapus.', true); }
+  };
+}
+
+/* ============================================================
+   KUNJUNGAN — hitung sisa, terima uang, titip lagi
+   ============================================================ */
+
+async function formKunjungan(w, warungId) {
+  const [semuaWarung, produk] = await Promise.all([S.ambilWarung(), S.ambilProduk()]);
+  const warung = semuaWarung.find(x => x.id === warungId);
+
+  if (!warung) {
+    w.innerHTML = `<div class="kosong"><h3>Warung tidak ditemukan</h3>
+      <a class="btn btn-garis" href="#/warung">Kembali</a></div>`;
+    return;
+  }
+  if (!produk.length) {
+    w.innerHTML = `<div class="kosong"><h3>Belum ada produk</h3>
+      <p>Daftarkan produk dulu supaya harga titipnya bisa dihitung.</p>
+      <a class="btn btn-primary" href="#/produk">Tambah produk</a></div>`;
+    return;
+  }
+
+  const cariProduk = (pid, nama) =>
+    produk.find(p => p.id === pid) || produk.find(p => p.nama === nama) || null;
+
+  // Baris awal: semua produk yang sedang tertitip di warung ini.
+  const baris = Object.entries(warung.stok || {}).map(([pid, s]) => {
+    const p = cariProduk(pid, s.nama);
+    return {
+      produk_id: pid,
+      nama: s.nama,
+      harga_titip: s.harga_titip ?? p?.harga_titip ?? 0,
+      harga_beli:  p?.harga_beli ?? 0,
+      stok_awal: s.qty || 0,
+      sisa: s.qty || 0,   // anggap belum laku sampai diisi
+      basi: 0,
+      titip_baru: 0
+    };
+  });
+
+  const gambar = () => {
+    w.innerHTML = `
+      <div class="catatan">Kunjungan ke <b>${aman(warung.nama)}</b>. Isi sisa fisik yang kamu hitung di rak — yang laku dihitung otomatis.</div>
+
+      <label class="field"><span>Tanggal kunjungan</span>
+        <input type="date" id="kTgl" value="${hariIni()}"></label>
+
+      <div class="bagian"><h2>Barang di warung</h2></div>
+      <div id="kItems"></div>
+      <button class="btn btn-garis btn-block" id="kTambah" style="margin-bottom:24px">Titip produk lain</button>
+
+      <div id="kRingkas"></div>
+
+      <label class="field uang"><span>Uang diterima hari ini</span>
+        <input type="text" inputmode="numeric" id="kBayar" value="0"></label>
+      <div id="kSisa"></div>
+
+      <label class="field"><span>Catatan (ikut tercetak di nota)</span>
+        <input id="kCatatan" placeholder="mis. minta tambah rasa balado"></label>
+
+      <button class="btn btn-primary btn-block" id="kSimpan">Simpan &amp; buat nota</button>`;
+
+    $('#kItems').innerHTML = baris.length ? baris.map((it, n) => `
+      <div class="item">
+        <div class="item-kepala">
+          <strong>${aman(it.nama)}</strong>
+          ${it.stok_awal === 0 ? `<button class="item-buang" data-buang="${n}">Hapus</button>` : ''}
+        </div>
+        <div class="rincian-baris" style="padding:0 0 8px">
+          <span style="color:var(--tinta-lembut);font-size:.84rem">Tercatat di warung</span>
+          <span style="font-weight:700">${it.stok_awal} bks</span>
+        </div>
+        ${it.stok_awal > 0 ? `
+        <div class="duo">
+          <label class="field" style="margin-bottom:12px"><span>Sisa fisik (bks)</span>
+            <input type="number" min="0" max="${it.stok_awal}" step="1" inputmode="numeric" data-sisa="${n}" value="${it.sisa}"></label>
+          <label class="field" style="margin-bottom:12px"><span>Basi/rusak (bks)</span>
+            <input type="number" min="0" max="${it.stok_awal}" step="1" inputmode="numeric" data-basi="${n}" value="${it.basi}"></label>
+        </div>` : ''}
+        <label class="field" style="margin-bottom:0"><span>Titip lagi (bks)</span>
+          <input type="number" min="0" step="1" inputmode="numeric" data-titip="${n}" value="${it.titip_baru}"></label>
+        <div data-hasil="${n}" style="font-size:.84rem;color:var(--tinta-lembut);margin-top:8px"></div>
+      </div>`).join('')
+      : `<div class="kosong" style="padding:24px 16px"><p style="margin:0">Belum ada barang di warung ini. Tambahkan produk yang mau dititipkan.</p></div>`;
+
+    $$('[data-sisa]').forEach(i => i.oninput  = () => { baris[+i.dataset.sisa].sisa  = batas(i, baris[+i.dataset.sisa]); hitung(); });
+    $$('[data-basi]').forEach(i => i.oninput  = () => { baris[+i.dataset.basi].basi  = batas(i, baris[+i.dataset.basi]); hitung(); });
+    $$('[data-titip]').forEach(i => i.oninput = () => { baris[+i.dataset.titip].titip_baru = Math.max(0, +i.value || 0); hitung(); });
+    $$('[data-buang]').forEach(b => b.onclick = () => { baris.splice(+b.dataset.buang, 1); gambar(); });
+
+    $('#kTambah').onclick = () => pilihProdukTitip();
+    $('#kBayar').oninput  = hitung;
+    $('#kSimpan').onclick = simpan;
+    hitung();
+  };
+
+  const batas = (input, it) => Math.min(it.stok_awal, Math.max(0, +input.value || 0));
+
+  function pilihProdukTitip() {
+    const belumAda = produk.filter(p => !baris.some(b => b.produk_id === p.id));
+    if (!belumAda.length) return toast('Semua produk sudah ada di daftar.');
+
+    bukaSheet(`
+      <h2 class="sheet-judul">Titip produk apa?</h2>
+      ${belumAda.map(p => `<button class="sheet-menu" data-pilih="${p.id}">${aman(p.nama)}
+        <small>titip ${rp(p.harga_titip)}/bks · modal ${rp(p.harga_beli)}/bks</small></button>`).join('')}`);
+
+    $$('[data-pilih]').forEach(b => b.onclick = () => {
+      const p = produk.find(x => x.id === b.dataset.pilih);
+      baris.push({
+        produk_id: p.id, nama: p.nama,
+        harga_titip: p.harga_titip, harga_beli: p.harga_beli,
+        stok_awal: 0, sisa: 0, basi: 0, titip_baru: 0
+      });
+      tutupSheet(); gambar();
+    });
+  }
+
+  const hitungBaris = it => {
+    const laku = Math.max(0, it.stok_awal - it.sisa - it.basi);
+    return { laku, nilai: laku * it.harga_titip, akhir: it.sisa + it.titip_baru };
+  };
+
+  function hitung() {
+    let nilaiLaku = 0, bksLaku = 0, bksBasi = 0, bksAkhir = 0, untung = 0;
+
+    baris.forEach((it, n) => {
+      const h = hitungBaris(it);
+      nilaiLaku += h.nilai; bksLaku += h.laku;
+      bksBasi   += it.basi; bksAkhir += h.akhir;
+      untung    += h.laku * (it.harga_titip - it.harga_beli);
+
+      const el = $(`[data-hasil="${n}"]`);
+      if (el) {
+        el.innerHTML = it.stok_awal > 0
+          ? `Laku <b>${h.laku} bks</b> = ${rp(h.nilai)} · tinggal ${h.akhir} bks di warung`
+          : `Titipan baru · tinggal ${h.akhir} bks di warung`;
+      }
+    });
+
+    const piutangLama = warung.piutang || 0;
+    const tagihan     = piutangLama + nilaiLaku;
+    const dibayar     = bacaAngka($('#kBayar')?.value || 0);
+    const sisaTagihan = Math.max(0, tagihan - dibayar);
+
+    $('#kRingkas').innerHTML = `
+      <div class="rincian">
+        <h3>Hasil kunjungan</h3>
+        <div class="rincian-baris"><span>Laku ${bksLaku} bks</span><span>${rp(nilaiLaku)}</span></div>
+        ${piutangLama > 0 ? `<div class="rincian-baris"><span>Sisa tagihan lalu</span><span>${rp(piutangLama)}</span></div>` : ''}
+        <div class="rincian-baris" style="border-top:1px solid var(--cap);margin-top:8px;padding-top:8px">
+          <span>Total tagihan</span><span>${rp(tagihan)}</span></div>
+        <div class="rincian-baris"><span>Untung dari yang laku</span><span class="hijau">${rp(untung)}</span></div>
+        ${bksBasi ? `<div class="rincian-baris"><span>Basi ditarik</span><span class="merah">${bksBasi} bks</span></div>` : ''}
+        <div class="rincian-baris"><span>Tinggal di warung</span><span>${bksAkhir} bks</span></div>
+      </div>`;
+
+    $('#kSisa').innerHTML = `
+      <div class="rincian ${dibayar > tagihan ? 'bahaya' : ''}" style="margin-top:-8px">
+        <div class="rincian-baris"><span>Sisa tagihan sesudah bayar</span><span>${rp(sisaTagihan)}</span></div>
+        ${dibayar > tagihan ? `<div class="rincian-baris"><span>Kelebihan bayar</span><span>${rp(dibayar - tagihan)}</span></div>` : ''}
+      </div>`;
+
+    const adaIsi = baris.some(it => it.stok_awal > 0 || it.titip_baru > 0);
+    $('#kSimpan').disabled = !adaIsi;
+  }
+
+  async function simpan() {
+    const dibayar = bacaAngka($('#kBayar').value);
+    const items   = baris.filter(it => it.stok_awal > 0 || it.titip_baru > 0);
+    if (!items.length) return toast('Belum ada barang yang diisi.', true);
+
+    const b = $('#kSimpan');
+    b.disabled = true; b.textContent = 'Menyimpan…';
+    try {
+      const data = {
+        warung,
+        tanggal: dariInput($('#kTgl').value) || new Date(),
+        items, dibayar,
+        catatan: $('#kCatatan').value.trim()
+      };
+      const hasil = await S.simpanKunjungan(data);
+      const lengkap = {
+        no: hasil.no, warung_nama: warung.nama, tanggal: data.tanggal,
+        items: items.map(it => {
+          const h = hitungBaris(it);
+          return { ...it, laku: h.laku, stok_akhir: h.akhir };
+        }),
+        nilai_laku: hasil.nilai_laku, tagihan: hasil.tagihan,
+        dibayar, piutang_sebelum: warung.piutang || 0,
+        piutang_sesudah: hasil.piutang_sesudah,
+        catatan: data.catatan
+      };
+      tampilkanNota(barisKunjungan(lengkap), `${hasil.no}.pdf`,
+        `${hasil.no} tersimpan`, '#/warung');
+    } catch (e) {
+      toast(e.message || 'Gagal menyimpan.', true);
+      b.disabled = false; b.textContent = 'Simpan & buat nota';
+    }
+  }
+
+  gambar();
 }
 
 /* ============================================================
@@ -566,7 +924,7 @@ async function vRetur(w) {
    NOTA — pratinjau, kirim, cetak ulang
    ============================================================ */
 
-function tampilkanNota(baris, namaFile, pesan) {
+function tampilkanNota(baris, namaFile, pesan, kembali = '') {
   bukaSheet(`
     <h2 class="sheet-judul">${aman(pesan)}</h2>
     <div class="slip">${pratinjauHTML(baris)}</div>
@@ -584,15 +942,19 @@ function tampilkanNota(baris, namaFile, pesan) {
     b.disabled = false; b.textContent = 'Kirim ke WhatsApp';
   };
 
-  $('#nTutup').onclick = () => { tutupSheet(); jalankanRute(); };
+  $('#nTutup').onclick = () => {
+    tutupSheet();
+    if (kembali && location.hash !== kembali) location.hash = kembali;
+    else jalankanRute();
+  };
 }
 
 async function vNota(w) {
-  const [setoran, retur, ambil] = await Promise.all([
-    S.ambilSetoran(), S.ambilRetur(), S.ambilPengambilan()
+  const [setoran, retur, ambil, kunjungan] = await Promise.all([
+    S.ambilSetoran(), S.ambilRetur(), S.ambilPengambilan(), S.ambilKunjungan()
   ]);
 
-  const semua = [...setoran, ...retur]
+  const semua = [...setoran, ...retur, ...kunjungan]
     .sort((a, b) => (keDate(b.tanggal) ?? 0) - (keDate(a.tanggal) ?? 0));
 
   if (!semua.length) {
@@ -601,23 +963,35 @@ async function vNota(w) {
     return;
   }
 
+  const gaya = { setoran: 'lunas', retur: 'aman', kunjungan: 'dekat' };
+  const label = {
+    setoran:   'Setoran ke distributor',
+    retur:     'Retur barang basi',
+    kunjungan: 'Kunjungan warung'
+  };
+  const nilai = n =>
+    n.jenis === 'setoran'   ? rp(n.jumlah)
+  : n.jenis === 'kunjungan' ? rp(n.dibayar || 0)
+  :                           `${n.total_bungkus} bks`;
+
   w.innerHTML = `
     <div class="catatan">Semua nota disimpan sebagai data, bukan file. Kapan pun bisa dicetak ulang dengan isi yang persis sama.</div>
     <div class="ledger">${semua.map(n => `
-      <button class="baris ${n.jenis === 'setoran' ? 'lunas' : 'aman'}" data-nota="${n.jenis}:${n.id}">
+      <button class="baris ${gaya[n.jenis] || 'aman'}" data-nota="${n.jenis}:${n.id}">
         <div class="baris-atas">
-          <span class="baris-judul">${aman(n.no)}</span>
-          <span class="baris-nilai">${n.jenis === 'setoran' ? rp(n.jumlah) : `${n.total_bungkus} bks`}</span>
+          <span class="baris-judul">${aman(n.no)}${n.warung_nama ? ' · ' + aman(n.warung_nama) : ''}</span>
+          <span class="baris-nilai">${nilai(n)}</span>
         </div>
         <div class="baris-bawah">
-          <span>${n.jenis === 'setoran' ? 'Setoran uang' : 'Retur barang basi'}</span>
+          <span>${label[n.jenis]}</span>
           <span>${tgl(n.tanggal)}</span>
         </div></button>`).join('')}</div>`;
 
   $$('[data-nota]').forEach(b => b.onclick = () => {
     const [jenis, id] = b.dataset.nota.split(':');
     const n = semua.find(x => x.id === id);
-    if (jenis === 'retur') return tampilkanNota(barisRetur(n), `${n.no}.pdf`, `Cetak ulang ${n.no}`);
+    if (jenis === 'retur')     return tampilkanNota(barisRetur(n), `${n.no}.pdf`, `Cetak ulang ${n.no}`);
+    if (jenis === 'kunjungan') return tampilkanNota(barisKunjungan(n), `${n.no}.pdf`, `Cetak ulang ${n.no}`);
 
     // Hutang pada saat nota itu dibuat = sisa saat ini + semua yang dibayar sejak nota tsb.
     const sesudah = setoran
@@ -626,6 +1000,91 @@ async function vNota(w) {
     const hutangKini = ambil.reduce((t, p) => t + (p.sisa || 0), 0);
     tampilkanNota(barisSetoran(n, hutangKini + sesudah), `${n.no}.pdf`, `Cetak ulang ${n.no}`);
   });
+}
+
+/* ============================================================
+   LAPORAN
+   ============================================================ */
+
+async function vLaporan(w) {
+  const r = await S.laporan();
+
+  const bulan = new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+
+  w.innerHTML = `
+    <section class="kop">
+      <p class="kop-label">Uang saya yang endap di toko</p>
+      <p class="kop-angka">${rp(r.endap)}</p>
+      <p class="kop-sub">belum jadi uang tunai di tangan</p>
+      <div class="kop-pisah"></div>
+      <div class="kop-grid">
+        <div><p>Barang tertitip</p><p>${rp(r.nilaiToko)}</p></div>
+        <div><p>Belum dibayar warung</p><p class="${r.piutang ? 'merah' : ''}">${rp(r.piutang)}</p></div>
+      </div>
+    </section>
+
+    <div class="bagian"><h2>Hutang saya</h2><span>ke ${aman(usaha.produsen)}</span></div>
+    <div class="rincian">
+      <div class="rincian-baris"><span>Sisa hutang</span><span class="${r.hutang ? 'merah' : 'hijau'}">${rp(r.hutang)}</span></div>
+      <div class="rincian-baris"><span>Dari pengambilan belum lunas</span><span>${r.jumlahBatchHutang}</span></div>
+    </div>
+
+    <div class="bagian"><h2>Untung saya</h2><span>dari barang yang laku</span></div>
+    <div class="rincian">
+      <div class="rincian-baris"><span>Untung ${aman(bulan)}</span><span class="hijau">${rp(r.untungBulanIni)}</span></div>
+      <div class="rincian-baris"><span>Omzet ${aman(bulan)}</span><span>${rp(r.omzetBulanIni)}</span></div>
+      <div class="rincian-baris" style="border-top:1px solid var(--cap);margin-top:8px;padding-top:8px">
+        <span>Untung sejak awal</span><span class="hijau">${rp(r.untung)}</span></div>
+      <div class="rincian-baris"><span>Omzet sejak awal</span><span>${rp(r.omzet)}</span></div>
+      <div class="rincian-baris"><span>Terjual ${r.bungkusLaku} bks</span><span>${ball(r.bungkusLaku)}</span></div>
+      ${r.rugiBasi ? `<div class="rincian-baris"><span>Basi ditarik dari warung (${r.bungkusBasi} bks)</span><span class="merah">${rp(r.rugiBasi)}</span></div>
+      <div style="font-size:.8rem;color:var(--tinta-lembut);margin-top:-2px">senilai modal — belum jadi rugi kalau diretur ke distributor</div>` : ''}
+    </div>
+
+    <div class="bagian"><h2>Produk saya di toko</h2><span>${r.warungBerisi} dari ${r.jumlahWarung} warung</span></div>
+    ${r.diToko.length
+      ? `<div class="ledger">${r.diToko.map(x => `
+          <div class="baris aman" style="cursor:default">
+            <div class="baris-atas">
+              <span class="baris-judul">${aman(x.nama)}</span>
+              <span class="baris-nilai">${x.qty} bks</span>
+            </div>
+            <div class="baris-bawah">
+              <span>tersebar di ${x.warung} warung</span>
+              <span>${ball(x.qty)}</span>
+            </div></div>`).join('')}</div>`
+      : `<div class="kosong" style="padding:24px 16px"><p style="margin:0">Belum ada barang tertitip di warung.</p></div>`}
+
+    <div class="bagian"><h2>Margin saya</h2><span>per bungkus</span></div>
+    ${r.margin.length
+      ? `<div class="ledger">${r.margin.map(m => `
+          <div class="baris ${m.margin > 0 ? 'lunas' : 'jatuh'}" style="cursor:default">
+            <div class="baris-atas">
+              <span class="baris-judul">${aman(m.nama)}</span>
+              <span class="baris-nilai ${m.margin > 0 ? 'hijau' : 'merah'}">+${rp(m.margin)}</span>
+            </div>
+            <div class="baris-bawah">
+              <span>beli ${rp(m.harga_beli)} · titip ${rp(m.harga_titip)}</span>
+              <span>${Math.round(m.persen)}% · ${rp(m.margin * ISI_PER_BALL)}/ball</span>
+            </div></div>`).join('')}</div>`
+      : `<div class="kosong" style="padding:24px 16px"><p style="margin:0">Belum ada produk terdaftar.</p></div>`}
+
+    <div class="bagian"><h2>Modal tertahan</h2><span>belum jadi uang</span></div>
+    <div class="rincian">
+      <div class="rincian-baris"><span>Stok di gudang (${r.bungkusGudang} bks)</span><span>${rp(r.modalGudang)}</span></div>
+      <div class="rincian-baris"><span>Stok di warung (${r.bungkusToko} bks)</span><span>${rp(r.modalToko)}</span></div>
+      <div class="rincian-baris"><span>Belum dibayar warung</span><span>${rp(r.piutang)}</span></div>
+      <div class="rincian-baris" style="border-top:1px solid var(--cap);margin-top:8px;padding-top:8px">
+        <span>Total modal tertahan</span><span>${rp(r.modalTertahan)}</span></div>
+      <div class="rincian-baris"><span>Dikurangi hutang distributor</span><span class="merah">−${rp(r.hutang)}</span></div>
+      <div class="rincian-baris" style="border-top:1px solid var(--cap);margin-top:8px;padding-top:8px">
+        <span>Posisi bersih</span><span class="${r.modalTertahan - r.hutang >= 0 ? 'hijau' : 'merah'}">${rp(r.modalTertahan - r.hutang)}</span></div>
+    </div>
+
+    <p class="field-hint" style="margin-top:16px">
+      Untung dihitung hanya dari barang yang benar-benar laku di warung (harga titip − harga beli).
+      Barang yang masih di gudang atau masih di rak warung belum dihitung sebagai untung.
+    </p>`;
 }
 
 /* ============================================================
@@ -740,7 +1199,7 @@ async function vStok(w) {
           <span>${ball(s.qty)}</span>
         </div></div>`;
     }).join('')}</div>
-    <p class="field-hint" style="margin-top:16px">Tahap 1 belum mengurangi stok yang dititipkan ke warung. Angka ini akan akurat setelah Tahap 2 jalan.</p>`;
+    <p class="field-hint" style="margin-top:16px">Ini stok yang masih di gudang kamu — sudah dikurangi yang dititipkan ke warung.</p>`;
 }
 
 /* ---------- delegasi klik baris beranda ---------- */
