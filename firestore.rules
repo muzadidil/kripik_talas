@@ -1,0 +1,26 @@
+rules_version = '2';
+
+// ============================================================
+//  PENTING
+//  Kode aplikasi ini publik di GitHub Pages, termasuk apiKey.
+//  Itu normal. Tapi artinya file inilah SATU-SATUNYA pengaman
+//  data kamu. Jangan pernah pakai mode test.
+//
+//  Ganti UID_PEMILIK dengan UID akun kamu.
+//  Firebase Console > Authentication > Users > salin "User UID"
+// ============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function pemilik() {
+      return request.auth != null
+          && request.auth.uid == 'UID_PEMILIK';
+    }
+
+    // Hanya pemilik yang boleh baca dan tulis apa pun.
+    match /{dokumen=**} {
+      allow read, write: if pemilik();
+    }
+  }
+}

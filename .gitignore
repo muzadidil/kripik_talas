@@ -1,0 +1,5 @@
+# Abaikan file lokal
+.DS_Store
+node_modules/
+*.log
+cadangan-*.json
