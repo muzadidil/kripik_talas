@@ -28,6 +28,12 @@
 
 *,*::before,*::after{ box-sizing:border-box; }
 
+/* Aturan bawaan browser [hidden]{display:none} kalah oleh class di file ini
+   (author stylesheet selalu menang atas user-agent stylesheet). Tanpa baris
+   ini, .boot/.gate/.sheet yang punya display:grid/flex tidak pernah benar-benar
+   tersembunyi meski atribut hidden-nya sudah dipasang JavaScript. */
+[hidden]{ display:none !important; }
+
 html{ -webkit-text-size-adjust:100%; }
 
 body{
