@@ -1,4 +1,4 @@
-import { usaha, ISI_PER_BALL, APP_PASSWORD, VERSI } from './config.js';
+import { usaha, ISI_PER_BALL, APP_PASSWORD } from './config.js';
 import {
   rp, angka, bacaAngka, ball, tgl, tglPanjang, tempoTeks, selisihHari,
   hariIni, dariInput, plusBulan, keDate, $, $$, aman, toast,
@@ -12,6 +12,11 @@ import {
 
 /** Jatah tempo bawaan dari distributor, dalam bulan. Masih bisa diubah per nota. */
 const TEMPO_BULAN = 2;
+
+/** Tampil di menu ⋮ — untuk memastikan browser tidak menjalankan versi lama
+ *  dari cache. Sengaja di sini, bukan di config.js: config.js adalah berkas
+ *  yang kamu sunting sendiri, sedangkan ini ikut tiap deploy. */
+const VERSI = '2026-09-07 · 6';
 
 /* ============================================================
    GERBANG KATA SANDI
@@ -27,6 +32,9 @@ function bukaGerbang() {
   $('#shell').hidden = false;
   jalankanRute();
 }
+
+// Beri tahu pengaman di index.html bahwa modul berhasil jalan.
+window.bukuKripikSiap?.();
 
 $('#boot').hidden = true;
 if (localStorage.getItem(KUNCI_SESI) === '1') {
