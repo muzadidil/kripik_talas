@@ -5,7 +5,7 @@ import {
   query, where, orderBy, limit, runTransaction, serverTimestamp, Timestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-import { firebaseConfig } from './config.js';
+import { firebaseConfig } from './config.js?v=2026-09-07-8';
 import { keDate } from './util.js';
 
 const app = initializeApp(firebaseConfig);

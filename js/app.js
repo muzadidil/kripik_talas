@@ -1,14 +1,14 @@
-import { usaha, ISI_PER_BALL, APP_PASSWORD } from './config.js';
+import { usaha, ISI_PER_BALL, APP_PASSWORD } from './config.js?v=2026-09-07-8';
 import {
   rp, angka, bacaAngka, ball, tgl, tglPanjang, tempoTeks, selisihHari,
   hariIni, dariInput, plusBulan, keDate, $, $$, aman, toast,
   bukaSheet, tutupSheet, konfirmasi
 } from './util.js';
-import * as S from './store.js';
+import * as S from './store.js?v=2026-09-07-8';
 import {
   barisPengambilan, barisSetoran, barisRetur, barisKunjungan,
   pratinjauHTML, kirimPDF
-} from './nota.js';
+} from './nota.js?v=2026-09-07-8';
 
 /** Jatah tempo bawaan dari distributor, dalam bulan. Masih bisa diubah per nota. */
 const TEMPO_BULAN = 2;

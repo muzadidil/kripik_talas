@@ -1,4 +1,4 @@
-import { usaha, ISI_PER_BALL } from './config.js';
+import { usaha, ISI_PER_BALL } from './config.js?v=2026-09-07-8';
 import { rp, ball, tgl, tglPanjang, aman, keDate } from './util.js';
 
 /* ============================================================
