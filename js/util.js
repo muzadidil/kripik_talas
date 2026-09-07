@@ -73,6 +73,17 @@ export const hariIni = () => {
 
 export const dariInput = s => (s ? new Date(s + 'T00:00:00') : null);
 
+/** Tambah n bulan ke tanggal input (yyyy-mm-dd), balikkan format yang sama.
+ *  31 Jan + 1 bulan jadi 28/29 Feb, bukan melompat ke Maret. */
+export function plusBulan(iso, n) {
+  const d = dariInput(iso) || new Date();
+  const hari = d.getDate();
+  d.setMonth(d.getMonth() + n);
+  if (d.getDate() !== hari) d.setDate(0);
+  const p = x => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 /* ---------- DOM ---------- */
 
 export const $  = (sel, induk = document) => induk.querySelector(sel);

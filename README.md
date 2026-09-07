@@ -94,9 +94,15 @@ sistem otomatis melunasi batch yang paling dekat jatuh temponya dulu. Rincian al
 tampil sebelum kamu simpan, dan ikut tercetak di nota — jadi produsen tahu persis
 uangnya masuk ke pengambilan mana.
 
+**Jatuh tempo otomatis 2 bulan.** Itu jatah tempo dari distributor, jadi form
+pengambilan mengisinya sendiri dari tanggal ambil. Kalau tanggal ambil diganti,
+tempo ikut geser — kecuali kamu sudah mengubahnya manual, yang berarti ada
+kesepakatan lain. Angka 2 bulan ada di `TEMPO_BULAN` pada `js/app.js`.
+
 **Nota dibuat ulang, bukan disimpan.** Yang tersimpan adalah datanya. PDF dirakit
 ulang setiap kali diminta, jadi nota 8 bulan lalu tetap bisa dicetak dengan isi
-yang persis sama. Buka tab **Nota**.
+yang persis sama. Empat jenis nota — pengambilan, setoran, retur, kunjungan warung —
+semuanya bisa dicetak ulang dari tab **Nota**.
 
 **Retur bisa dipecah.** Barang basi bisa sebagian ditukar barang baru, sebagian
 memotong hutang. Yang memotong hutang masuk alokasi FIFO seperti setoran.

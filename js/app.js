@@ -1,10 +1,17 @@
 import { usaha, ISI_PER_BALL, APP_PASSWORD } from './config.js';
 import {
   rp, angka, bacaAngka, ball, tgl, tglPanjang, tempoTeks, selisihHari,
-  hariIni, dariInput, keDate, $, $$, aman, toast, bukaSheet, tutupSheet, konfirmasi
+  hariIni, dariInput, plusBulan, keDate, $, $$, aman, toast,
+  bukaSheet, tutupSheet, konfirmasi
 } from './util.js';
 import * as S from './store.js';
-import { barisSetoran, barisRetur, barisKunjungan, pratinjauHTML, kirimPDF } from './nota.js';
+import {
+  barisPengambilan, barisSetoran, barisRetur, barisKunjungan,
+  pratinjauHTML, kirimPDF
+} from './nota.js';
+
+/** Jatah tempo bawaan dari distributor, dalam bulan. Masih bisa diubah per nota. */
+const TEMPO_BULAN = 2;
 
 /* ============================================================
    GERBANG KATA SANDI
@@ -215,7 +222,8 @@ async function vAmbil(w, anak) {
         <a class="btn btn-primary" href="#/produk">Tambah produk</a></div>`;
       return;
     }
-    return formPengambilan(w, produk);
+    const belum = await S.ambilPengambilan({ hanyaBelumLunas: true });
+    return formPengambilan(w, produk, belum.reduce((n, p) => n + (p.sisa || 0), 0));
   }
 
   const daftar = await S.ambilPengambilan();
@@ -240,29 +248,48 @@ async function vAmbil(w, anak) {
   $$('[data-lihat]').forEach(b => b.onclick = () => rincianPengambilan(daftar.find(p => p.id === b.dataset.lihat)));
 }
 
-function formPengambilan(w, produk) {
+function formPengambilan(w, produk, hutangSebelum = 0) {
   const items = [{ produk_id: produk[0].id, ball: 1 }];
+
+  // Disimpan di luar gambar() supaya tidak hilang saat form digambar ulang.
+  const form = {
+    tgl: hariIni(),
+    tempo: plusBulan(hariIni(), TEMPO_BULAN),
+    catatan: '',
+    tempoDiubah: false
+  };
 
   const gambar = () => {
     w.innerHTML = `
       <div class="catatan">Isi jumlah dalam ball. Sistem menyimpannya sebagai bungkus (1 ball = ${ISI_PER_BALL} bungkus).</div>
 
       <label class="field"><span>Tanggal ambil</span>
-        <input type="date" id="fTgl" value="${hariIni()}"></label>
+        <input type="date" id="fTgl" value="${form.tgl}"></label>
 
       <div class="bagian"><h2>Barang diambil</h2></div>
       <div id="fItems"></div>
       <button class="btn btn-garis btn-block" id="fTambah" style="margin-bottom:24px">Tambah produk lain</button>
 
       <label class="field"><span>Jatuh tempo yang disepakati</span>
-        <input type="date" id="fTempo">
-        <span class="field-hint">Kosongkan kalau belum ada kesepakatan. Tapi lebih baik diisi.</span></label>
+        <input type="date" id="fTempo" value="${form.tempo}">
+        <span class="field-hint">Otomatis ${TEMPO_BULAN} bulan dari tanggal ambil — jatah dari ${aman(usaha.produsen)}. Ubah kalau kesepakatannya lain.</span></label>
 
       <label class="field"><span>Catatan negosiasi</span>
-        <input id="fCatatan" placeholder="mis. tempo 3 minggu, boleh dicicil"></label>
+        <input id="fCatatan" value="${aman(form.catatan)}" placeholder="mis. boleh dicicil"></label>
 
       <div class="rincian" id="fTotal"></div>
       <button class="btn btn-primary btn-block" id="fSimpan">Simpan pengambilan</button>`;
+
+    $('#fTgl').onchange = () => {
+      form.tgl = $('#fTgl').value;
+      // Tempo ikut geser selama belum diubah manual.
+      if (!form.tempoDiubah && form.tgl) {
+        form.tempo = plusBulan(form.tgl, TEMPO_BULAN);
+        $('#fTempo').value = form.tempo;
+      }
+    };
+    $('#fTempo').onchange  = () => { form.tempo = $('#fTempo').value; form.tempoDiubah = true; };
+    $('#fCatatan').oninput = () => { form.catatan = $('#fCatatan').value; };
 
     const wi = $('#fItems');
     wi.innerHTML = items.map((it, n) => `
@@ -317,12 +344,17 @@ function formPengambilan(w, produk) {
     const b = $('#fSimpan');
     b.disabled = true; b.textContent = 'Menyimpan…';
     try {
+      const tanggal = dariInput($('#fTgl').value) || new Date();
+      const catatan = $('#fCatatan').value.trim();
       const hasil = await S.simpanPengambilan({
-        tanggal: dariInput($('#fTgl').value) || new Date(),
-        items: jadi, jatuh_tempo: tempo, catatan: $('#fCatatan').value.trim()
+        tanggal, items: jadi, jatuh_tempo: tempo, catatan
       });
-      toast(`${hasil.no} tersimpan — hutang +${rp(hasil.total)}`);
-      location.hash = '#/ambil';
+      tampilkanNota(
+        barisPengambilan({
+          no: hasil.no, tanggal, items: jadi, total: hasil.total,
+          jatuh_tempo: tempo, catatan, terbayar: 0, sisa: hasil.total
+        }, hutangSebelum),
+        `${hasil.no}.pdf`, `${hasil.no} tersimpan`, '#/ambil');
     } catch (e) {
       toast(e.message || 'Gagal menyimpan.', true);
       b.disabled = false; b.textContent = 'Simpan pengambilan';
@@ -348,7 +380,11 @@ function rincianPengambilan(p) {
     <div class="rincian-baris"><span>Jatuh tempo</span><span>${p.jatuh_tempo ? tgl(p.jatuh_tempo) : 'tidak ditentukan'}</span></div>
     <div class="rincian-baris"><span>Status</span><span>${aman(t.teks)}</span></div>
     ${p.catatan ? `<p style="margin-top:12px;color:var(--tinta-lembut);font-size:.88rem">${aman(p.catatan)}</p>` : ''}
-    <button class="btn btn-garis btn-block" style="margin-top:24px" data-close>Tutup</button>`);
+    <button class="btn btn-primary btn-block" id="pNota" style="margin-top:24px;margin-bottom:12px">Cetak nota</button>
+    <button class="btn btn-garis btn-block" data-close>Tutup</button>`);
+
+  $('#pNota').onclick = () =>
+    tampilkanNota(barisPengambilan(p), `${p.no}.pdf`, `Cetak ulang ${p.no}`);
 }
 
 /* ============================================================
@@ -524,12 +560,14 @@ async function formKunjungan(w, warungId) {
     };
   });
 
+  const form = { tgl: hariIni(), bayar: '0', catatan: '' };
+
   const gambar = () => {
     w.innerHTML = `
       <div class="catatan">Kunjungan ke <b>${aman(warung.nama)}</b>. Isi sisa fisik yang kamu hitung di rak — yang laku dihitung otomatis.</div>
 
       <label class="field"><span>Tanggal kunjungan</span>
-        <input type="date" id="kTgl" value="${hariIni()}"></label>
+        <input type="date" id="kTgl" value="${form.tgl}"></label>
 
       <div class="bagian"><h2>Barang di warung</h2></div>
       <div id="kItems"></div>
@@ -538,13 +576,16 @@ async function formKunjungan(w, warungId) {
       <div id="kRingkas"></div>
 
       <label class="field uang"><span>Uang diterima hari ini</span>
-        <input type="text" inputmode="numeric" id="kBayar" value="0"></label>
+        <input type="text" inputmode="numeric" id="kBayar" value="${aman(form.bayar)}"></label>
       <div id="kSisa"></div>
 
       <label class="field"><span>Catatan (ikut tercetak di nota)</span>
-        <input id="kCatatan" placeholder="mis. minta tambah rasa balado"></label>
+        <input id="kCatatan" value="${aman(form.catatan)}" placeholder="mis. minta tambah rasa balado"></label>
 
       <button class="btn btn-primary btn-block" id="kSimpan">Simpan &amp; buat nota</button>`;
+
+    $('#kTgl').onchange    = () => { form.tgl = $('#kTgl').value; };
+    $('#kCatatan').oninput = () => { form.catatan = $('#kCatatan').value; };
 
     $('#kItems').innerHTML = baris.length ? baris.map((it, n) => `
       <div class="item">
@@ -575,7 +616,7 @@ async function formKunjungan(w, warungId) {
     $$('[data-buang]').forEach(b => b.onclick = () => { baris.splice(+b.dataset.buang, 1); gambar(); });
 
     $('#kTambah').onclick = () => pilihProdukTitip();
-    $('#kBayar').oninput  = hitung;
+    $('#kBayar').oninput  = () => { form.bayar = $('#kBayar').value; hitung(); };
     $('#kSimpan').onclick = simpan;
     hitung();
   };
@@ -820,12 +861,14 @@ async function vRetur(w) {
   const totalHutang = belum.reduce((n, p) => n + p.sisa, 0);
   let terakhir = null;
 
+  const form = { tgl: hariIni(), catatan: '' };
+
   const gambar = () => {
     w.innerHTML = `
-      <div class="catatan">Barang basi yang kamu kembalikan ke produsen. Isi dalam bungkus. Bagi antara ditukar barang baru dan potong hutang.</div>
+      <div class="catatan">Barang basi yang kamu kembalikan ke distributor. Isi dalam bungkus. Bagi antara ditukar barang baru dan potong hutang.</div>
 
       <label class="field"><span>Tanggal retur</span>
-        <input type="date" id="rTgl" value="${hariIni()}"></label>
+        <input type="date" id="rTgl" value="${form.tgl}"></label>
 
       <div class="bagian"><h2>Barang basi</h2></div>
       <div id="rItems"></div>
@@ -834,9 +877,12 @@ async function vRetur(w) {
       <div id="rPratinjau"></div>
 
       <label class="field"><span>Catatan (ikut tercetak di nota)</span>
-        <input id="rCatatan" placeholder="mis. dari warung Bu Sri, tengik"></label>
+        <input id="rCatatan" value="${aman(form.catatan)}" placeholder="mis. dari warung Bu Sri, tengik"></label>
 
       <button class="btn btn-primary btn-block" id="rSimpan">Simpan &amp; buat nota</button>`;
+
+    $('#rTgl').onchange    = () => { form.tgl = $('#rTgl').value; };
+    $('#rCatatan').oninput = () => { form.catatan = $('#rCatatan').value; };
 
     $('#rItems').innerHTML = items.map((it, n) => `
       <div class="item">
@@ -954,8 +1000,10 @@ async function vNota(w) {
     S.ambilSetoran(), S.ambilRetur(), S.ambilPengambilan(), S.ambilKunjungan()
   ]);
 
-  const semua = [...setoran, ...retur, ...kunjungan]
-    .sort((a, b) => (keDate(b.tanggal) ?? 0) - (keDate(a.tanggal) ?? 0));
+  const semua = [
+    ...setoran, ...retur, ...kunjungan,
+    ...ambil.map(p => ({ ...p, jenis: 'pengambilan' }))
+  ].sort((a, b) => (keDate(b.tanggal) ?? 0) - (keDate(a.tanggal) ?? 0));
 
   if (!semua.length) {
     w.innerHTML = `<div class="kosong"><h3>Belum ada nota</h3>
@@ -963,16 +1011,18 @@ async function vNota(w) {
     return;
   }
 
-  const gaya = { setoran: 'lunas', retur: 'aman', kunjungan: 'dekat' };
+  const gaya = { setoran: 'lunas', retur: 'aman', kunjungan: 'dekat', pengambilan: 'jatuh' };
   const label = {
-    setoran:   'Setoran ke distributor',
-    retur:     'Retur barang basi',
-    kunjungan: 'Kunjungan warung'
+    setoran:     'Setoran ke distributor',
+    retur:       'Retur barang basi',
+    kunjungan:   'Kunjungan warung',
+    pengambilan: 'Ambil dari distributor'
   };
   const nilai = n =>
-    n.jenis === 'setoran'   ? rp(n.jumlah)
-  : n.jenis === 'kunjungan' ? rp(n.dibayar || 0)
-  :                           `${n.total_bungkus} bks`;
+    n.jenis === 'setoran'     ? rp(n.jumlah)
+  : n.jenis === 'kunjungan'   ? rp(n.dibayar || 0)
+  : n.jenis === 'pengambilan' ? rp(n.total)
+  :                             `${n.total_bungkus} bks`;
 
   w.innerHTML = `
     <div class="catatan">Semua nota disimpan sebagai data, bukan file. Kapan pun bisa dicetak ulang dengan isi yang persis sama.</div>
@@ -990,8 +1040,9 @@ async function vNota(w) {
   $$('[data-nota]').forEach(b => b.onclick = () => {
     const [jenis, id] = b.dataset.nota.split(':');
     const n = semua.find(x => x.id === id);
-    if (jenis === 'retur')     return tampilkanNota(barisRetur(n), `${n.no}.pdf`, `Cetak ulang ${n.no}`);
-    if (jenis === 'kunjungan') return tampilkanNota(barisKunjungan(n), `${n.no}.pdf`, `Cetak ulang ${n.no}`);
+    if (jenis === 'retur')       return tampilkanNota(barisRetur(n), `${n.no}.pdf`, `Cetak ulang ${n.no}`);
+    if (jenis === 'kunjungan')   return tampilkanNota(barisKunjungan(n), `${n.no}.pdf`, `Cetak ulang ${n.no}`);
+    if (jenis === 'pengambilan') return tampilkanNota(barisPengambilan(n), `${n.no}.pdf`, `Cetak ulang ${n.no}`);
 
     // Hutang pada saat nota itu dibuat = sisa saat ini + semua yang dibayar sejak nota tsb.
     const sesudah = setoran

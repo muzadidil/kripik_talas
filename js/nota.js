@@ -57,6 +57,51 @@ function kaki(catatan) {
   return b;
 }
 
+/** Nota pengambilan barang dari produsen — bukti hutang bertambah. */
+export function barisPengambilan(p, hutangSebelum = null) {
+  const bks = (p.items || []).reduce((n, i) => n + i.qty, 0);
+
+  const b = [
+    ...kepala('NOTA PENGAMBILAN'),
+    P('No.', p.no),
+    P('Tanggal', tgl(p.tanggal)),
+    P('Dari', usaha.produsen),
+    G(),
+    T('Barang diambil:')
+  ];
+
+  (p.items || []).forEach(i => {
+    b.push(P(' ' + i.nama, rp(i.qty * i.harga)));
+    b.push(T(`   ${i.qty} bks (${ball(i.qty, ISI_PER_BALL)}) x ${rp(i.harga)}`));
+  });
+
+  b.push(
+    G(),
+    P('Total barang', `${bks} bks (${ball(bks, ISI_PER_BALL)})`),
+    PB('NILAI PENGAMBILAN', rp(p.total))
+  );
+
+  if (hutangSebelum !== null) {
+    b.push(
+      G(),
+      P('Hutang sebelumnya', rp(hutangSebelum)),
+      P('Pengambilan ini', rp(p.total)),
+      PB('Hutang jadi', rp(hutangSebelum + p.total))
+    );
+  } else if (p.terbayar > 0) {
+    b.push(G(), P('Sudah dibayar', rp(p.terbayar)), PB('Sisa hutang', rp(p.sisa)));
+  }
+
+  b.push(G());
+  b.push(PB('Jatuh tempo', p.jatuh_tempo ? tgl(p.jatuh_tempo) : 'belum disepakati'));
+  if (p.jatuh_tempo) {
+    const d = keDate(p.jatuh_tempo);
+    b.push(T(`  ${tglPanjang(d)}`));
+  }
+
+  return [...b, ...kaki(p.catatan)];
+}
+
 /** Nota setoran uang ke produsen. */
 export function barisSetoran(s, hutangSebelum) {
   const sesudah = hutangSebelum - s.jumlah;
