@@ -1,8 +1,5 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
-  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
-} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   collection, doc, getDocs, getDoc, addDoc, setDoc, deleteDoc,
   query, where, orderBy, limit, runTransaction, serverTimestamp, Timestamp
@@ -11,21 +8,12 @@ import {
 import { firebaseConfig } from './config.js';
 import { keDate } from './util.js';
 
-const app  = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+const app = initializeApp(firebaseConfig);
 
 // Cache lokal supaya aplikasi tetap jalan saat sinyal hilang di jalan.
 const db = initializeFirestore(app, {
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
 });
-
-/* ============================================================
-   AUTH
-   ============================================================ */
-
-export const masuk  = (email, sandi) => signInWithEmailAndPassword(auth, email, sandi);
-export const keluar = () => signOut(auth);
-export const pantauAuth = cb => onAuthStateChanged(auth, cb);
 
 /* ============================================================
    PRODUK

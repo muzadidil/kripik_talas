@@ -1,4 +1,4 @@
-import { usaha, ISI_PER_BALL } from './config.js';
+import { usaha, ISI_PER_BALL, APP_PASSWORD } from './config.js';
 import {
   rp, angka, bacaAngka, ball, tgl, tglPanjang, tempoTeks, selisihHari,
   hariIni, dariInput, keDate, $, $$, aman, toast, bukaSheet, tutupSheet, konfirmasi
@@ -7,30 +7,36 @@ import * as S from './store.js';
 import { barisSetoran, barisRetur, pratinjauHTML, kirimPDF } from './nota.js';
 
 /* ============================================================
-   AUTENTIKASI
+   GERBANG KATA SANDI
+   Ini bukan keamanan data — hanya penghalang tampilan.
+   Keamanan data sesungguhnya ada (atau sengaja tidak ada) di
+   firestore.rules.
    ============================================================ */
 
-S.pantauAuth(user => {
-  $('#boot').hidden = true;
-  $('#gate').hidden  = !!user;
-  $('#shell').hidden = !user;
-  if (user) jalankanRute();
-});
+const KUNCI_SESI = 'kripik_masuk';
 
-$('#gBtn').onclick = async () => {
-  const tombol = $('#gBtn');
-  const salah  = $('#gErr');
-  salah.hidden = true;
-  tombol.disabled = true; tombol.textContent = 'Memeriksa…';
-  try {
-    await S.masuk($('#gEmail').value.trim(), $('#gPass').value);
-  } catch (e) {
-    salah.textContent = e.code === 'auth/invalid-credential'
-      ? 'Email atau kata sandi tidak cocok.'
-      : 'Tidak bisa masuk. Periksa koneksi lalu coba lagi.';
+function bukaGerbang() {
+  $('#gate').hidden  = true;
+  $('#shell').hidden = false;
+  jalankanRute();
+}
+
+$('#boot').hidden = true;
+if (localStorage.getItem(KUNCI_SESI) === '1') {
+  bukaGerbang();
+} else {
+  $('#gate').hidden = false;
+}
+
+$('#gBtn').onclick = () => {
+  const salah = $('#gErr');
+  if ($('#gPass').value === APP_PASSWORD) {
+    localStorage.setItem(KUNCI_SESI, '1');
+    salah.hidden = true;
+    bukaGerbang();
+  } else {
+    salah.textContent = 'Kata sandi salah.';
     salah.hidden = false;
-  } finally {
-    tombol.disabled = false; tombol.textContent = 'Masuk';
   }
 };
 
@@ -66,8 +72,10 @@ $('#menuBtn').onclick = () => {
 
   $('#mKeluar').onclick = async () => {
     tutupSheet();
-    if (await konfirmasi({ judul: 'Keluar dari akun?', pesan: 'Kamu perlu masuk lagi nanti.', aksi: 'Keluar', bahaya: true }))
-      S.keluar();
+    if (await konfirmasi({ judul: 'Keluar?', pesan: 'Kamu perlu masukkan kata sandi lagi nanti.', aksi: 'Keluar', bahaya: true })) {
+      localStorage.removeItem(KUNCI_SESI);
+      location.reload();
+    }
   };
 };
 
