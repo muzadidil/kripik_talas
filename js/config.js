@@ -17,7 +17,7 @@ export const firebaseConfig = {
 // ============================================================
 
 export const usaha = {
-  nama:     "Kripik Zasha",
+  nama:     "ZaSha Online",
   pemilik:  "Muzadidil",
   hp:       "082232458226",
   kota:     "Jember",
