@@ -46,6 +46,25 @@ export function tglPanjang(v) {
   return `${HARI[d.getDay()]}, ${tgl(d)}`;
 }
 
+export function jam(v) {
+  const d = keDate(v);
+  if (!d || isNaN(d)) return '-';
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+export function tglJam(v) {
+  const d = keDate(v);
+  if (!d || isNaN(d)) return '-';
+  return `${tgl(d)}, ${jam(d)}`;
+}
+
+export function tglPanjangJam(v) {
+  const d = keDate(v);
+  if (!d || isNaN(d)) return '-';
+  return `${tglPanjang(d)}, ${jam(d)}`;
+}
+
 /** Selisih hari dari hari ini. Negatif = sudah lewat. */
 export function selisihHari(v) {
   const d = keDate(v);
@@ -72,6 +91,20 @@ export const hariIni = () => {
 };
 
 export const dariInput = s => (s ? new Date(s + 'T00:00:00') : null);
+
+/** Jam sekarang, format "HH:MM" — nilai bawaan input type="time". */
+export const jamSekarang = () => {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
+/** Gabungkan input type="date" + type="time" jadi satu Date dengan jam
+ *  sesungguhnya — dariInput() polos selalu mengunci jam ke 00:00. */
+export function dariInputJam(tglStr, jamStr) {
+  if (!tglStr) return null;
+  return new Date(`${tglStr}T${jamStr || '00:00'}:00`);
+}
 
 /** Tambah n bulan ke tanggal input (yyyy-mm-dd), balikkan format yang sama.
  *  31 Jan + 1 bulan jadi 28/29 Feb, bukan melompat ke Maret. */
