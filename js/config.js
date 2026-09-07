@@ -21,7 +21,7 @@ export const usaha = {
   pemilik:  "Muzadidil",
   hp:       "082232458226",
   kota:     "Jember",
-  produsen: "Nama Produsen"
+  produsen: "Distributor zasha.online"
 };
 
 // Berapa bungkus dalam 1 ball.
