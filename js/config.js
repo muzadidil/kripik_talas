@@ -19,7 +19,7 @@ export const firebaseConfig = {
 export const usaha = {
   nama:     "Kripik Zasha",
   pemilik:  "Muzadidil",
-  hp:       "08xxxxxxxxxx",
+  hp:       "082232458226",
   kota:     "Jember",
   produsen: "Nama Produsen"
 };
