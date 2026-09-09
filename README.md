@@ -121,6 +121,13 @@ itu masih modal tertahan, bukan laba.
 **Offline.** Firestore menyimpan cache di HP. Kalau sinyal hilang di jalan, aplikasi
 tetap terbuka dan bisa dibaca. Perubahan tersinkron sendiri saat sinyal kembali.
 
+**Lokasi warung.** Di form warung ada tombol **📍 Ambil lokasi GPS sekarang** —
+tekan sambil berdiri di depan warungnya, browser akan minta izin lokasi sekali,
+lalu koordinatnya tersimpan. Warung yang sudah punya lokasi ditandai 📍 di daftar,
+dan detailnya punya tombol **Buka di Google Maps** yang langsung mengarahkan ke
+titik itu (buka aplikasi Maps di HP kalau ada). Tidak perlu API key apa pun —
+cuma link `google.com/maps?q=lat,lng` biasa.
+
 ---
 
 ## Struktur data
@@ -186,7 +193,11 @@ dibatalkan setelah ditekan.
 
 ## Belum ada
 
-- Peta lokasi warung (Leaflet + OpenStreetMap, gratis, tanpa kartu kredit)
+- Peta interaktif di dalam aplikasi (Leaflet + OpenStreetMap) yang menampilkan
+  semua warung sekaligus. Sekarang lokasi tiap warung sudah bisa direkam
+  lewat GPS HP dan dibuka satu per satu di Google Maps — lihat bagian
+  **Lokasi warung** di bawah — tapi belum ada tampilan peta gabungan di
+  dalam aplikasi.
 - Barang basi yang ditarik dari warung belum otomatis masuk ke form Retur —
   masih harus diketik ulang di tab Retur saat mau dikembalikan ke distributor
 - Grafik tren penjualan per bulan

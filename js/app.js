@@ -1,14 +1,14 @@
-import { usaha, ISI_PER_BALL, APP_PASSWORD } from './config.js?v=2026-09-09-1';
+import { usaha, ISI_PER_BALL, APP_PASSWORD } from './config.js?v=2026-09-09-2';
 import {
   rp, angka, bacaAngka, ball, tgl, tglPanjang, tempoTeks, selisihHari,
   hariIni, dariInput, keInput, plusBulan, keDate, $, $$, aman, toast,
   bukaSheet, tutupSheet, konfirmasi
 } from './util.js';
-import * as S from './store.js?v=2026-09-09-1';
+import * as S from './store.js?v=2026-09-09-2';
 import {
   barisPengambilan, barisSetoran, barisRetur, barisKunjungan,
   pratinjauHTML, kirimPDF
-} from './nota.js?v=2026-09-09-1';
+} from './nota.js?v=2026-09-09-2';
 
 /** Jatah tempo bawaan dari distributor, dalam bulan. Masih bisa diubah per nota. */
 const TEMPO_BULAN = 2;
@@ -16,7 +16,7 @@ const TEMPO_BULAN = 2;
 /** Tampil di menu ⋮ — untuk memastikan browser tidak menjalankan versi lama
  *  dari cache. Sengaja di sini, bukan di config.js: config.js adalah berkas
  *  yang kamu sunting sendiri, sedangkan ini ikut tiap deploy. */
-const VERSI = '2026-09-09 · 1';
+const VERSI = '2026-09-09 · 2';
 
 /* ============================================================
    GERBANG KATA SANDI
@@ -512,7 +512,7 @@ async function vWarung(w, anak, cucu) {
       const perlu = hari === null || hari >= 7;
       return `<button class="baris ${perlu ? 'dekat' : bks ? 'aman' : 'lunas'}" data-warung="${x.id}">
         <div class="baris-atas">
-          <span class="baris-judul">${aman(x.nama)}</span>
+          <span class="baris-judul">${x.lokasi ? '📍 ' : ''}${aman(x.nama)}</span>
           <span class="baris-nilai">${bks} bks</span>
         </div>
         <div class="baris-bawah">
@@ -551,13 +551,19 @@ function rincianWarung(x) {
     ${x.catatan ? `<p style="margin-top:12px;color:var(--tinta-lembut);font-size:.88rem">${aman(x.catatan)}</p>` : ''}
 
     <button class="btn btn-primary btn-block" id="wKunjung" style="margin-top:24px;margin-bottom:12px">Catat kunjungan</button>
+    ${x.lokasi ? `<button class="btn btn-garis btn-block" id="wPeta" style="margin-bottom:12px">📍 Buka di Google Maps</button>` : ''}
     <button class="btn btn-garis btn-block" id="wUbah">Ubah data warung</button>`);
 
   $('#wKunjung').onclick = () => { tutupSheet(); location.hash = `#/warung/kunjungan/${x.id}`; };
   $('#wUbah').onclick    = () => { tutupSheet(); formWarung(x); };
+  if (x.lokasi) $('#wPeta').onclick = () =>
+    window.open(`https://www.google.com/maps?q=${x.lokasi.lat},${x.lokasi.lng}`, '_blank', 'noopener');
 }
 
 function formWarung(x = null) {
+  // Di luar bukaSheet() supaya tidak hilang kalau bagian lokasi digambar ulang.
+  let lokasi = x?.lokasi || null;
+
   bukaSheet(`
     <h2 class="sheet-judul">${x ? 'Ubah warung' : 'Warung baru'}</h2>
     <label class="field"><span>Nama warung</span>
@@ -570,10 +576,47 @@ function formWarung(x = null) {
     </div>
     <label class="field"><span>Alamat / patokan</span>
       <input id="wAlamat" value="${aman(x?.alamat || '')}" placeholder="depan SD, jalan Kalimantan"></label>
+
+    <label class="field">
+      <span>Lokasi peta</span>
+      <div id="wLokasiInfo"></div>
+      <button type="button" class="btn btn-garis btn-block" id="wAmbilLokasi" style="margin-top:8px">📍 Ambil lokasi GPS sekarang</button>
+      <span class="field-hint">Berdiri di depan warungnya lalu tekan tombol ini. Dipakai untuk buka arah lewat Google Maps nanti.</span>
+    </label>
+
     <label class="field"><span>Catatan</span>
       <input id="wCatatan" value="${aman(x?.catatan || '')}" placeholder="mis. bayarnya suka telat"></label>
     <button class="btn btn-primary btn-block" id="wSimpan" style="margin-bottom:12px">Simpan</button>
     ${x ? `<button class="btn btn-bahaya btn-block" id="wHapus">Hapus warung</button>` : ''}`);
+
+  const gambarLokasi = () => {
+    $('#wLokasiInfo').innerHTML = lokasi
+      ? `<div class="rincian" style="margin:0"><div class="rincian-baris">
+           <span>Tersimpan</span><span>${lokasi.lat.toFixed(5)}, ${lokasi.lng.toFixed(5)}</span></div></div>`
+      : `<p class="field-hint" style="margin:0">Belum ada lokasi tersimpan.</p>`;
+  };
+  gambarLokasi();
+
+  $('#wAmbilLokasi').onclick = () => {
+    if (!navigator.geolocation) return toast('HP/browser ini tidak mendukung GPS.', true);
+    const b = $('#wAmbilLokasi');
+    b.disabled = true; b.textContent = 'Mengambil lokasi…';
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        lokasi = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        gambarLokasi();
+        toast('Lokasi diambil. Jangan lupa tekan Simpan.');
+        b.disabled = false; b.textContent = '📍 Ambil ulang lokasi GPS';
+      },
+      err => {
+        toast(err.code === 1
+          ? 'Izin lokasi ditolak. Aktifkan lewat pengaturan browser.'
+          : 'Gagal mengambil lokasi. Coba lagi di tempat sinyal GPS lebih jelas.', true);
+        b.disabled = false; b.textContent = '📍 Ambil lokasi GPS sekarang';
+      },
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
+  };
 
   $('#wSimpan').onclick = async () => {
     const nama = $('#wNama').value.trim();
@@ -585,6 +628,7 @@ function formWarung(x = null) {
         hp:      $('#wHp').value.trim(),
         alamat:  $('#wAlamat').value.trim(),
         catatan: $('#wCatatan').value.trim(),
+        lokasi:  lokasi || null,
         aktif:   true
       }, x?.id);
       tutupSheet(); toast('Warung tersimpan.'); jalankanRute();
