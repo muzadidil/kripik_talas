@@ -151,9 +151,36 @@ bisa hilang bukan cuma karena kesalahan sendiri, tapi juga karena orang lain yan
 menemukan `projectId` ini. Kamu pindah dari buku tulis karena takut hilang — jangan
 bikin masalah yang sama bentuknya lain.
 
-**Nomor nota jangan sampai loncat.** Penomoran berurutan otomatis. Kalau kamu
-menghapus dokumen langsung dari Firebase Console, nomornya bolong dan produsen
-berhak curiga. Jangan edit data dari console.
+**Nomor nota boleh bolong kalau itu koreksi kesalahan lewat aplikasi — jangan
+pernah lewat Firebase Console.** Menghapus lewat aplikasi (lihat di bawah)
+membalik efeknya dengan benar (hutang/piutang/stok ikut disesuaikan) dan
+nomornya memang sengaja dilewati, itu wajar. Menghapus langsung dari Firebase
+Console tidak membalik apa pun — hutang/piutang jadi salah tanpa jejak. Jangan
+edit data dari console.
+
+---
+
+## Salah input? Ubah atau hapus
+
+**Pengambilan** boleh diubah atau dihapus bebas selama belum ada setoran/retur
+yang menyentuhnya (`terbayar` masih 0). Begitu sudah kena alokasi sekali saja,
+kedua tombol itu hilang — supaya angka di nota setoran yang sudah tercetak
+tidak pernah jadi bohong.
+
+**Setoran dan retur** boleh dihapus kapan pun, urutan berapa pun. Menghapusnya
+membalik alokasi FIFO-nya — pengambilan yang tadi kena potong otomatis balik
+ke sisa hutang semula. Tidak ada mode "ubah" untuk keduanya: kalau salah,
+hapus lalu catat ulang yang benar. Itu lebih aman daripada mengedit alokasi
+yang sudah menyebar ke beberapa dokumen sekaligus.
+
+**Kunjungan warung** hanya boleh dihapus kalau itu kunjungan **paling baru**
+untuk warung tersebut. Kalau sudah ada kunjungan berikutnya yang dicatat di
+atasnya, hapus dulu yang paling baru itu, baru mundur. Menghapusnya
+mengembalikan stok dan piutang warung persis seperti sebelum kunjungan itu
+terjadi.
+
+Semua penghapusan lewat aplikasi minta konfirmasi dulu dan tidak bisa
+dibatalkan setelah ditekan.
 
 ---
 

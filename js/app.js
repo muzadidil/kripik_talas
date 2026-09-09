@@ -1,14 +1,14 @@
-import { usaha, ISI_PER_BALL, APP_PASSWORD } from './config.js?v=2026-09-07-8';
+import { usaha, ISI_PER_BALL, APP_PASSWORD } from './config.js?v=2026-09-09-1';
 import {
   rp, angka, bacaAngka, ball, tgl, tglPanjang, tempoTeks, selisihHari,
-  hariIni, dariInput, plusBulan, keDate, $, $$, aman, toast,
+  hariIni, dariInput, keInput, plusBulan, keDate, $, $$, aman, toast,
   bukaSheet, tutupSheet, konfirmasi
 } from './util.js';
-import * as S from './store.js?v=2026-09-07-8';
+import * as S from './store.js?v=2026-09-09-1';
 import {
   barisPengambilan, barisSetoran, barisRetur, barisKunjungan,
   pratinjauHTML, kirimPDF
-} from './nota.js?v=2026-09-07-8';
+} from './nota.js?v=2026-09-09-1';
 
 /** Jatah tempo bawaan dari distributor, dalam bulan. Masih bisa diubah per nota. */
 const TEMPO_BULAN = 2;
@@ -16,7 +16,7 @@ const TEMPO_BULAN = 2;
 /** Tampil di menu ⋮ — untuk memastikan browser tidak menjalankan versi lama
  *  dari cache. Sengaja di sini, bukan di config.js: config.js adalah berkas
  *  yang kamu sunting sendiri, sedangkan ini ikut tiap deploy. */
-const VERSI = '2026-09-07 · 7';
+const VERSI = '2026-09-09 · 1';
 
 /* ============================================================
    GERBANG KATA SANDI
@@ -240,7 +240,7 @@ function barisHutang(p) {
    PENGAMBILAN
    ============================================================ */
 
-async function vAmbil(w, anak) {
+async function vAmbil(w, anak, cucu) {
   const produk = await S.ambilProduk();
 
   if (anak === 'baru') {
@@ -252,6 +252,26 @@ async function vAmbil(w, anak) {
     }
     const belum = await S.ambilPengambilan({ hanyaBelumLunas: true });
     return formPengambilan(w, produk, belum.reduce((n, p) => n + (p.sisa || 0), 0));
+  }
+
+  if (anak === 'ubah' && cucu) {
+    const semua = await S.ambilPengambilan();
+    const p = semua.find(x => x.id === cucu);
+    if (!p) {
+      w.innerHTML = `<div class="kosong"><h3>Tidak ditemukan</h3>
+        <a class="btn btn-garis" href="#/ambil">Kembali</a></div>`;
+      return;
+    }
+    if ((p.terbayar || 0) > 0) {
+      w.innerHTML = `<div class="kosong"><h3>Tidak bisa diubah</h3>
+        <p>${aman(p.no)} sudah pernah disetor/dipotong sebagian, jadi tidak aman diubah lagi.</p>
+        <a class="btn btn-garis" href="#/ambil">Kembali</a></div>`;
+      return;
+    }
+    const hutangSebelum = semua
+      .filter(x => x.id !== p.id)
+      .reduce((n, x) => n + (x.sisa || 0), 0);
+    return formPengambilan(w, produk, hutangSebelum, p);
   }
 
   const daftar = await S.ambilPengambilan();
@@ -276,15 +296,17 @@ async function vAmbil(w, anak) {
   $$('[data-lihat]').forEach(b => b.onclick = () => rincianPengambilan(daftar.find(p => p.id === b.dataset.lihat)));
 }
 
-function formPengambilan(w, produk, hutangSebelum = 0) {
-  const items = [{ produk_id: produk[0].id, ball: 1 }];
+function formPengambilan(w, produk, hutangSebelum = 0, existing = null) {
+  const items = existing
+    ? existing.items.map(i => ({ produk_id: i.produk_id, ball: i.qty / ISI_PER_BALL }))
+    : [{ produk_id: produk[0].id, ball: 1 }];
 
   // Disimpan di luar gambar() supaya tidak hilang saat form digambar ulang.
   const form = {
-    tgl: hariIni(),
-    tempo: plusBulan(hariIni(), TEMPO_BULAN),
-    catatan: '',
-    tempoDiubah: false
+    tgl: existing ? keInput(existing.tanggal) : hariIni(),
+    tempo: existing?.jatuh_tempo ? keInput(existing.jatuh_tempo) : plusBulan(hariIni(), TEMPO_BULAN),
+    catatan: existing?.catatan || '',
+    tempoDiubah: !!existing?.jatuh_tempo
   };
 
   const gambar = () => {
@@ -306,7 +328,7 @@ function formPengambilan(w, produk, hutangSebelum = 0) {
         <input id="fCatatan" value="${aman(form.catatan)}" placeholder="mis. boleh dicicil"></label>
 
       <div class="rincian" id="fTotal"></div>
-      <button class="btn btn-primary btn-block" id="fSimpan">Simpan pengambilan</button>`;
+      <button class="btn btn-primary btn-block" id="fSimpan">${existing ? 'Simpan perubahan' : 'Simpan pengambilan'}</button>`;
 
     $('#fTgl').onchange = () => {
       form.tgl = $('#fTgl').value;
@@ -374,18 +396,31 @@ function formPengambilan(w, produk, hutangSebelum = 0) {
     try {
       const tanggal = dariInput($('#fTgl').value) || new Date();
       const catatan = $('#fCatatan').value.trim();
-      const hasil = await S.simpanPengambilan({
-        tanggal, items: jadi, jatuh_tempo: tempo, catatan
-      });
-      tampilkanNota(
-        barisPengambilan({
-          no: hasil.no, tanggal, items: jadi, total: hasil.total,
-          jatuh_tempo: tempo, catatan, terbayar: 0, sisa: hasil.total
-        }, hutangSebelum),
-        `${hasil.no}.pdf`, `${hasil.no} tersimpan`, '#/ambil');
+
+      if (existing) {
+        const hasil = await S.ubahPengambilan(existing.id, {
+          tanggal, items: jadi, jatuh_tempo: tempo, catatan
+        });
+        tampilkanNota(
+          barisPengambilan({
+            no: existing.no, tanggal, items: jadi, total: hasil.total,
+            jatuh_tempo: tempo, catatan, terbayar: 0, sisa: hasil.total
+          }, hutangSebelum),
+          `${existing.no}.pdf`, `${existing.no} diperbarui`, '#/ambil');
+      } else {
+        const hasil = await S.simpanPengambilan({
+          tanggal, items: jadi, jatuh_tempo: tempo, catatan
+        });
+        tampilkanNota(
+          barisPengambilan({
+            no: hasil.no, tanggal, items: jadi, total: hasil.total,
+            jatuh_tempo: tempo, catatan, terbayar: 0, sisa: hasil.total
+          }, hutangSebelum),
+          `${hasil.no}.pdf`, `${hasil.no} tersimpan`, '#/ambil');
+      }
     } catch (e) {
       toast(e.message || 'Gagal menyimpan.', true);
-      b.disabled = false; b.textContent = 'Simpan pengambilan';
+      b.disabled = false; b.textContent = existing ? 'Simpan perubahan' : 'Simpan pengambilan';
     }
   }
 
@@ -396,6 +431,8 @@ function rincianPengambilan(p) {
   if (!p) return;
   const bks = (p.items || []).reduce((n, i) => n + i.qty, 0);
   const t = p.lunas ? { teks: 'Lunas' } : tempoTeks(p.jatuh_tempo);
+  const bolehUbah = (p.terbayar || 0) === 0;
+
   bukaSheet(`
     <h2 class="sheet-judul">${aman(p.no)}</h2>
     <div class="rincian">
@@ -409,10 +446,32 @@ function rincianPengambilan(p) {
     <div class="rincian-baris"><span>Status</span><span>${aman(t.teks)}</span></div>
     ${p.catatan ? `<p style="margin-top:12px;color:var(--tinta-lembut);font-size:.88rem">${aman(p.catatan)}</p>` : ''}
     <button class="btn btn-primary btn-block" id="pNota" style="margin-top:24px;margin-bottom:12px">Cetak nota</button>
+    ${bolehUbah
+      ? `<button class="btn btn-garis btn-block" id="pUbah" style="margin-bottom:12px">Ubah</button>
+         <button class="btn btn-bahaya btn-block" id="pHapusAmbil" style="margin-bottom:12px">Hapus</button>`
+      : `<p class="field-hint" style="text-align:center;margin-bottom:12px">Sudah pernah disetor/dipotong sebagian, jadi tidak bisa diubah atau dihapus lagi.</p>`}
     <button class="btn btn-garis btn-block" data-close>Tutup</button>`);
 
   $('#pNota').onclick = () =>
     tampilkanNota(barisPengambilan(p), `${p.no}.pdf`, `Cetak ulang ${p.no}`);
+
+  if (bolehUbah) {
+    $('#pUbah').onclick = () => { tutupSheet(); location.hash = `#/ambil/ubah/${p.id}`; };
+
+    $('#pHapusAmbil').onclick = async () => {
+      tutupSheet();
+      if (!await konfirmasi({
+        judul: `Hapus ${p.no}?`,
+        pesan: `Pengambilan ini akan dihapus dan hutang ${rp(p.total)}-nya ikut hilang. Nomor nota akan bolong — itu wajar untuk koreksi kesalahan. Tidak bisa dibatalkan.`,
+        aksi: 'Hapus', bahaya: true
+      })) return;
+      try {
+        await S.hapusPengambilan(p);
+        toast(`${p.no} dihapus.`);
+        jalankanRute();
+      } catch (e) { toast(e.message || 'Gagal menghapus.', true); }
+    };
+  }
 }
 
 /* ============================================================
@@ -1065,9 +1124,7 @@ async function vNota(w) {
           <span>${tgl(n.tanggal)}</span>
         </div></button>`).join('')}</div>`;
 
-  $$('[data-nota]').forEach(b => b.onclick = () => {
-    const [jenis, id] = b.dataset.nota.split(':');
-    const n = semua.find(x => x.id === id);
+  const cetakUlang = (jenis, n) => {
     if (jenis === 'retur')       return tampilkanNota(barisRetur(n), `${n.no}.pdf`, `Cetak ulang ${n.no}`);
     if (jenis === 'kunjungan')   return tampilkanNota(barisKunjungan(n), `${n.no}.pdf`, `Cetak ulang ${n.no}`);
     if (jenis === 'pengambilan') return tampilkanNota(barisPengambilan(n), `${n.no}.pdf`, `Cetak ulang ${n.no}`);
@@ -1077,7 +1134,68 @@ async function vNota(w) {
       .filter(s => (keDate(s.tanggal) ?? 0) >= (keDate(n.tanggal) ?? 0))
       .reduce((t, s) => t + s.jumlah, 0);
     const hutangKini = ambil.reduce((t, p) => t + (p.sisa || 0), 0);
-    tampilkanNota(barisSetoran(n, hutangKini + sesudah), `${n.no}.pdf`, `Cetak ulang ${n.no}`);
+    return tampilkanNota(barisSetoran(n, hutangKini + sesudah), `${n.no}.pdf`, `Cetak ulang ${n.no}`);
+  };
+
+  /** Apakah satu nota masih boleh dihapus, dan kenapa kalau tidak. */
+  const bolehHapus = (jenis, n) => {
+    if (jenis === 'kunjungan') {
+      const waktu = x => keDate(x.tanggal)?.getTime() ?? 0;
+      const lebihBaru = kunjungan.some(x =>
+        x.warung_id === n.warung_id && x.id !== n.id && waktu(x) > waktu(n));
+      return lebihBaru
+        ? { boleh: false, alasan: 'Ada kunjungan yang lebih baru untuk warung ini. Hapus dulu yang paling baru.' }
+        : { boleh: true };
+    }
+    return { boleh: true }; // setoran & retur: aman dihapus urutan berapa pun
+  };
+
+  const hapusNota = async (jenis, n) => {
+    tutupSheet();
+    if (!await konfirmasi({
+      judul: `Hapus ${n.no}?`,
+      pesan: `${label[jenis]} ini akan dihapus dan efeknya dibalik (hutang/piutang ikut disesuaikan). Nomor nota akan bolong — itu wajar untuk koreksi kesalahan. Tidak bisa dibatalkan.`,
+      aksi: 'Hapus', bahaya: true
+    })) return;
+    try {
+      if (jenis === 'setoran')        await S.hapusSetoran(n);
+      else if (jenis === 'retur')     await S.hapusRetur(n);
+      else if (jenis === 'kunjungan') await S.hapusKunjungan(n);
+      toast(`${n.no} dihapus.`);
+      jalankanRute();
+    } catch (e) { toast(e.message || 'Gagal menghapus.', true); }
+  };
+
+  const ringkasNota = (jenis, n) => ({
+    setoran:   `<div class="rincian-baris"><span>Jumlah setor</span><span>${rp(n.jumlah)}</span></div>`,
+    retur:     `<div class="rincian-baris"><span>Ditukar</span><span>${n.total_tukar} bks</span></div>
+                <div class="rincian-baris"><span>Potong hutang</span><span>${rp(n.nilai_potong)}</span></div>`,
+    kunjungan: `<div class="rincian-baris"><span>Warung</span><span>${aman(n.warung_nama)}</span></div>
+                <div class="rincian-baris"><span>Diterima</span><span>${rp(n.dibayar || 0)}</span></div>
+                <div class="rincian-baris"><span>Sisa tagihan</span><span>${rp(n.piutang_sesudah || 0)}</span></div>`
+  }[jenis] || '');
+
+  const rincianNota = (jenis, n) => {
+    const izin = bolehHapus(jenis, n);
+    bukaSheet(`
+      <h2 class="sheet-judul">${aman(n.no)}</h2>
+      <p style="color:var(--tinta-lembut);font-size:.88rem;margin-bottom:16px">${aman(label[jenis])} · ${aman(tgl(n.tanggal))}</p>
+      <div class="rincian">${ringkasNota(jenis, n)}</div>
+      <button class="btn btn-primary btn-block" id="rnCetak" style="margin-top:20px;margin-bottom:12px">Cetak nota</button>
+      ${izin.boleh
+        ? `<button class="btn btn-bahaya btn-block" id="rnHapus" style="margin-bottom:12px">Hapus</button>`
+        : `<p class="field-hint" style="text-align:center;margin-bottom:12px">${aman(izin.alasan)}</p>`}
+      <button class="btn btn-garis btn-block" data-close>Tutup</button>`);
+
+    $('#rnCetak').onclick = () => { tutupSheet(); cetakUlang(jenis, n); };
+    if (izin.boleh) $('#rnHapus').onclick = () => hapusNota(jenis, n);
+  };
+
+  $$('[data-nota]').forEach(b => b.onclick = () => {
+    const [jenis, id] = b.dataset.nota.split(':');
+    const n = semua.find(x => x.id === id);
+    if (jenis === 'pengambilan') return rincianPengambilan(n);
+    rincianNota(jenis, n);
   });
 }
 

@@ -5,7 +5,7 @@ import {
   query, where, orderBy, limit, runTransaction, serverTimestamp, Timestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-import { firebaseConfig } from './config.js?v=2026-09-07-8';
+import { firebaseConfig } from './config.js?v=2026-09-09-1';
 import { keDate } from './util.js';
 
 const app = initializeApp(firebaseConfig);
@@ -61,6 +61,40 @@ export async function simpanPengambilan({ tanggal, items, jatuh_tempo, catatan }
     });
     return { no, total };
   });
+}
+
+/**
+ * Ubah pengambilan yang salah input. Hanya boleh selama belum ada uang
+ * yang menyentuhnya (terbayar === 0) -- begitu sudah dialokasikan lewat
+ * setoran/retur, mengubah total di sini akan bikin angka itu tidak nyambung
+ * lagi dengan yang sudah tercatat di nota lain.
+ */
+export async function ubahPengambilan(id, { tanggal, items, jatuh_tempo, catatan }) {
+  const total = items.reduce((n, i) => n + i.qty * i.harga, 0);
+  return runTransaction(db, async tx => {
+    const ref  = doc(db, 'pengambilan', id);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error('Data pengambilan sudah tidak ada. Muat ulang halaman.');
+    if ((snap.data().terbayar || 0) > 0) {
+      throw new Error('Sudah pernah disetor/dipotong sebagian, tidak bisa diubah lagi.');
+    }
+    tx.update(ref, {
+      tanggal: Timestamp.fromDate(tanggal), items, total, sisa: total,
+      jatuh_tempo: jatuh_tempo ? Timestamp.fromDate(jatuh_tempo) : null,
+      catatan: catatan || ''
+    });
+    return { total };
+  });
+}
+
+/** Hapus pengambilan yang salah input. Sama seperti ubah: hanya boleh
+ *  selama terbayar === 0, supaya tidak meninggalkan alokasi yang menunjuk
+ *  ke dokumen yang sudah tidak ada. */
+export async function hapusPengambilan(p) {
+  if ((p.terbayar || 0) > 0) {
+    throw new Error('Sudah pernah disetor/dipotong sebagian, tidak bisa dihapus. Hapus dulu setoran/retur yang memotongnya.');
+  }
+  await deleteDoc(doc(db, 'pengambilan', p.id));
 }
 
 /* ============================================================
@@ -126,6 +160,29 @@ function tulisAlokasi(tx, dibaca) {
   }
 }
 
+/** BACA: kembalikan dokumen pengambilan yang alokasinya mau DIBATALKAN. */
+async function bacaAlokasiBalik(tx, alokasi) {
+  const dibaca = [];
+  for (const a of alokasi || []) {
+    const ref  = doc(db, 'pengambilan', a.pengambilan_id);
+    const snap = await tx.get(ref);
+    // Kalau dokumennya sudah tidak ada (harusnya tidak mungkin, karena
+    // pengambilan yang sudah kena alokasi tidak bisa dihapus), lewati saja
+    // daripada gagal total -- yang penting sisa alokasi lain tetap dibalik.
+    if (snap.exists()) dibaca.push({ ref, data: snap.data(), a });
+  }
+  return dibaca;
+}
+
+/** TULIS: kurangi terbayar/sisa sesuai alokasi yang dibatalkan. */
+function tulisAlokasiBalik(tx, dibaca) {
+  for (const { ref, data, a } of dibaca) {
+    const terbayar = Math.max(0, (data.terbayar || 0) - a.jumlah);
+    const sisa     = (data.total || 0) - terbayar;
+    tx.update(ref, { terbayar, sisa, lunas: sisa <= 0 });
+  }
+}
+
 /** BACA: nomor urut berikutnya untuk satu jenis nota. */
 async function bacaUrut(tx, jenis) {
   const cRef  = doc(db, 'counters', 'nota');
@@ -156,6 +213,17 @@ export async function simpanSetoran({ tanggal, jumlah, alokasi, lebih, catatan }
       created_at: serverTimestamp()
     });
     return { no };
+  });
+}
+
+/** Hapus setoran yang salah input. Efeknya dibalik dulu ke pengambilan
+ *  yang tadi kena alokasi -- boleh dihapus kapan pun, tidak peduli urutan,
+ *  karena membalik hanya mengurangi angka, bukan menimpanya. */
+export async function hapusSetoran(s) {
+  return runTransaction(db, async tx => {
+    const dibaca = await bacaAlokasiBalik(tx, s.alokasi);
+    tulisAlokasiBalik(tx, dibaca);
+    tx.delete(doc(db, 'setoran_produsen', s.id));
   });
 }
 
@@ -193,6 +261,18 @@ export async function simpanRetur({ tanggal, items, alokasi, lebih, catatan }) {
       created_at: serverTimestamp()
     });
     return { no, nilai_potong };
+  });
+}
+
+/** Hapus retur yang salah input. Sama seperti setoran: alokasi (kalau ada
+ *  yang memotong hutang) dibalik dulu. Efek ke stok gudang otomatis ikut
+ *  hilang karena stokGudang() dihitung ulang dari dokumen yang masih ada,
+ *  bukan dari angka tersimpan. */
+export async function hapusRetur(r) {
+  return runTransaction(db, async tx => {
+    const dibaca = await bacaAlokasiBalik(tx, r.alokasi);
+    tulisAlokasiBalik(tx, dibaca);
+    tx.delete(doc(db, 'retur_produsen', r.id));
   });
 }
 
@@ -290,6 +370,53 @@ export async function simpanKunjungan({ warung, tanggal, items, dibayar, catatan
     });
 
     return { no, nilai_laku, dibayar, piutang_sesudah, untung, tagihan };
+  });
+}
+
+/**
+ * Hapus kunjungan yang salah input. Hanya boleh untuk kunjungan TERBARU
+ * pada warung itu -- kunjungan berikutnya (kalau ada) sudah membangun
+ * stok/piutangnya di atas hasil kunjungan ini, jadi membalik yang lama
+ * saja akan bikin datanya tidak nyambung.
+ *
+ * Pembalikan: stok warung dikembalikan ke stok_awal tiap item (kondisi
+ * sebelum kunjungan ini), piutang dikembalikan ke piutang_sebelum, dan
+ * kunjungan_terakhir dicari dari kunjungan sebelumnya (atau null kalau
+ * ini kunjungan pertama).
+ */
+export async function hapusKunjungan(k) {
+  const s = await getDocs(query(
+    collection(db, 'kunjungan_warung'), where('warung_id', '==', k.warung_id)));
+  const lain = s.docs.filter(d => d.id !== k.id).map(d => ({ id: d.id, ...d.data() }));
+
+  const waktu = x => keDate(x.tanggal)?.getTime() ?? 0;
+  const lebihBaru = lain.some(x => waktu(x) > waktu(k));
+  if (lebihBaru) {
+    throw new Error('Ada kunjungan yang lebih baru untuk warung ini. Hapus dulu yang paling baru, baru mundur ke yang ini.');
+  }
+
+  const sebelumnya = lain
+    .filter(x => waktu(x) < waktu(k))
+    .sort((a, b) => waktu(b) - waktu(a))[0] || null;
+
+  return runTransaction(db, async tx => {
+    const wRef  = doc(db, 'warung', k.warung_id);
+    const wSnap = await tx.get(wRef);
+    if (!wSnap.exists()) throw new Error('Warung sudah tidak ada. Muat ulang halaman.');
+
+    const stok = {};
+    (k.items || []).forEach(i => {
+      if ((i.stok_awal || 0) > 0) {
+        stok[i.produk_id] = { nama: i.nama, qty: i.stok_awal, harga_titip: i.harga_titip };
+      }
+    });
+
+    tx.update(wRef, {
+      stok,
+      piutang: k.piutang_sebelum || 0,
+      kunjungan_terakhir: sebelumnya ? sebelumnya.tanggal : null
+    });
+    tx.delete(doc(db, 'kunjungan_warung', k.id));
   });
 }
 

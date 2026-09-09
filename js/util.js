@@ -92,6 +92,15 @@ export const hariIni = () => {
 
 export const dariInput = s => (s ? new Date(s + 'T00:00:00') : null);
 
+/** Kebalikan hariIni() untuk tanggal sembarang — Timestamp/Date jadi
+ *  "yyyy-mm-dd" untuk nilai bawaan input type="date" saat form Ubah dibuka. */
+export function keInput(v) {
+  const d = keDate(v);
+  if (!d || isNaN(d)) return hariIni();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 /** Jam sekarang, format "HH:MM" — nilai bawaan input type="time". */
 export const jamSekarang = () => {
   const d = new Date();
