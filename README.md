@@ -180,11 +180,14 @@ ke sisa hutang semula. Tidak ada mode "ubah" untuk keduanya: kalau salah,
 hapus lalu catat ulang yang benar. Itu lebih aman daripada mengedit alokasi
 yang sudah menyebar ke beberapa dokumen sekaligus.
 
-**Kunjungan warung** hanya boleh dihapus kalau itu kunjungan **paling baru**
-untuk warung tersebut. Kalau sudah ada kunjungan berikutnya yang dicatat di
-atasnya, hapus dulu yang paling baru itu, baru mundur. Menghapusnya
-mengembalikan stok dan piutang warung persis seperti sebelum kunjungan itu
-terjadi.
+**Kunjungan warung** hanya boleh diubah atau dihapus kalau itu kunjungan
+**paling baru** untuk warung tersebut. Kalau sudah ada kunjungan berikutnya
+yang dicatat di atasnya, selesaikan dulu yang paling baru itu, baru mundur.
+Menghapusnya mengembalikan stok dan piutang warung persis seperti sebelum
+kunjungan itu terjadi. Kalau cuma jumlah uang yang diterima yang salah ketik
+(barang/stoknya sudah benar), pakai **Ubah jumlah diterima** — lebih cepat
+daripada hapus lalu catat ulang semuanya, dan piutang warung otomatis
+dihitung ulang dari tagihan yang sudah tercatat.
 
 Semua penghapusan lewat aplikasi minta konfirmasi dulu dan tidak bisa
 dibatalkan setelah ditekan.

@@ -5,7 +5,7 @@ import {
   query, where, orderBy, limit, runTransaction, serverTimestamp, Timestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-import { firebaseConfig } from './config.js?v=2026-09-09-2';
+import { firebaseConfig } from './config.js?v=2026-09-09-3';
 import { keDate } from './util.js';
 
 const app = initializeApp(firebaseConfig);
@@ -373,18 +373,11 @@ export async function simpanKunjungan({ warung, tanggal, items, dibayar, catatan
   });
 }
 
-/**
- * Hapus kunjungan yang salah input. Hanya boleh untuk kunjungan TERBARU
- * pada warung itu -- kunjungan berikutnya (kalau ada) sudah membangun
- * stok/piutangnya di atas hasil kunjungan ini, jadi membalik yang lama
- * saja akan bikin datanya tidak nyambung.
- *
- * Pembalikan: stok warung dikembalikan ke stok_awal tiap item (kondisi
- * sebelum kunjungan ini), piutang dikembalikan ke piutang_sebelum, dan
- * kunjungan_terakhir dicari dari kunjungan sebelumnya (atau null kalau
- * ini kunjungan pertama).
- */
-export async function hapusKunjungan(k) {
+/** BACA: kunjungan lain pada warung yang sama, dan pastikan k adalah yang
+ *  TERBARU -- baik hapus maupun ubah pembayaran hanya aman untuk kunjungan
+ *  paling baru, karena kunjungan berikutnya (kalau ada) sudah membangun
+ *  stok/piutangnya di atas hasil kunjungan ini. */
+async function cekKunjunganTerbaru(k) {
   const s = await getDocs(query(
     collection(db, 'kunjungan_warung'), where('warung_id', '==', k.warung_id)));
   const lain = s.docs.filter(d => d.id !== k.id).map(d => ({ id: d.id, ...d.data() }));
@@ -392,8 +385,42 @@ export async function hapusKunjungan(k) {
   const waktu = x => keDate(x.tanggal)?.getTime() ?? 0;
   const lebihBaru = lain.some(x => waktu(x) > waktu(k));
   if (lebihBaru) {
-    throw new Error('Ada kunjungan yang lebih baru untuk warung ini. Hapus dulu yang paling baru, baru mundur ke yang ini.');
+    throw new Error('Ada kunjungan yang lebih baru untuk warung ini. Selesaikan dulu yang paling baru, baru mundur ke yang ini.');
   }
+  return lain;
+}
+
+/**
+ * Ubah HANYA jumlah uang yang diterima pada kunjungan -- barang/stok yang
+ * sudah dihitung tetap, cuma angka pembayarannya yang salah input. Piutang
+ * warung ikut disesuaikan; sisa tagihan dihitung ulang dari tagihan yang
+ * sudah tercatat, bukan dihitung ulang dari nol.
+ */
+export async function ubahPembayaranKunjungan(k, dibayarBaru) {
+  await cekKunjunganTerbaru(k);
+  const piutang_sesudah = Math.max(0, (k.tagihan || 0) - dibayarBaru);
+
+  return runTransaction(db, async tx => {
+    const wRef  = doc(db, 'warung', k.warung_id);
+    const wSnap = await tx.get(wRef);
+    if (!wSnap.exists()) throw new Error('Warung sudah tidak ada. Muat ulang halaman.');
+
+    tx.update(wRef, { piutang: piutang_sesudah });
+    tx.update(doc(db, 'kunjungan_warung', k.id), { dibayar: dibayarBaru, piutang_sesudah });
+    return { piutang_sesudah };
+  });
+}
+
+/**
+ * Hapus kunjungan yang salah input. Hanya boleh untuk kunjungan TERBARU
+ * pada warung itu. Pembalikan: stok warung dikembalikan ke stok_awal tiap
+ * item (kondisi sebelum kunjungan ini), piutang dikembalikan ke
+ * piutang_sebelum, dan kunjungan_terakhir dicari dari kunjungan sebelumnya
+ * (atau null kalau ini kunjungan pertama).
+ */
+export async function hapusKunjungan(k) {
+  const lain = await cekKunjunganTerbaru(k);
+  const waktu = x => keDate(x.tanggal)?.getTime() ?? 0;
 
   const sebelumnya = lain
     .filter(x => waktu(x) < waktu(k))

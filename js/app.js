@@ -1,14 +1,14 @@
-import { usaha, ISI_PER_BALL, APP_PASSWORD } from './config.js?v=2026-09-09-2';
+import { usaha, ISI_PER_BALL, APP_PASSWORD } from './config.js?v=2026-09-09-3';
 import {
   rp, angka, bacaAngka, ball, tgl, tglPanjang, tempoTeks, selisihHari,
   hariIni, dariInput, keInput, plusBulan, keDate, $, $$, aman, toast,
   bukaSheet, tutupSheet, konfirmasi
 } from './util.js';
-import * as S from './store.js?v=2026-09-09-2';
+import * as S from './store.js?v=2026-09-09-3';
 import {
   barisPengambilan, barisSetoran, barisRetur, barisKunjungan,
   pratinjauHTML, kirimPDF
-} from './nota.js?v=2026-09-09-2';
+} from './nota.js?v=2026-09-09-3';
 
 /** Jatah tempo bawaan dari distributor, dalam bulan. Masih bisa diubah per nota. */
 const TEMPO_BULAN = 2;
@@ -16,7 +16,7 @@ const TEMPO_BULAN = 2;
 /** Tampil di menu ⋮ — untuk memastikan browser tidak menjalankan versi lama
  *  dari cache. Sengaja di sini, bukan di config.js: config.js adalah berkas
  *  yang kamu sunting sendiri, sedangkan ini ikut tiap deploy. */
-const VERSI = '2026-09-09 · 2';
+const VERSI = '2026-09-09 · 3';
 
 /* ============================================================
    GERBANG KATA SANDI
@@ -1219,6 +1219,45 @@ async function vNota(w) {
                 <div class="rincian-baris"><span>Sisa tagihan</span><span>${rp(n.piutang_sesudah || 0)}</span></div>`
   }[jenis] || '');
 
+  const ubahDibayarKunjungan = (n) => {
+    tutupSheet();
+    bukaSheet(`
+      <h2 class="sheet-judul">Ubah jumlah diterima</h2>
+      <p style="color:var(--tinta-lembut);font-size:.88rem;margin-bottom:16px">${aman(n.no)} · ${aman(n.warung_nama)}</p>
+      <div class="rincian" style="margin-bottom:16px">
+        <div class="rincian-baris"><span>Total tagihan</span><span>${rp(n.tagihan)}</span></div>
+      </div>
+      <label class="field uang"><span>Uang diterima yang benar</span>
+        <input type="text" inputmode="numeric" id="ubDibayar" value="${angka(n.dibayar || 0)}"></label>
+      <div id="ubSisa" class="rincian"></div>
+      <button class="btn btn-primary btn-block" id="ubSimpan" style="margin-top:8px;margin-bottom:12px">Simpan perubahan</button>
+      <button class="btn btn-garis btn-block" data-close>Batal</button>`);
+
+    const hitungSisa = () => {
+      const dibayarBaru = bacaAngka($('#ubDibayar').value);
+      const sisaBaru = Math.max(0, (n.tagihan || 0) - dibayarBaru);
+      $('#ubSisa').innerHTML =
+        `<div class="rincian-baris"><span>Sisa tagihan jadi</span><span>${rp(sisaBaru)}</span></div>`;
+    };
+    $('#ubDibayar').oninput = hitungSisa;
+    hitungSisa();
+
+    $('#ubSimpan').onclick = async () => {
+      const dibayarBaru = bacaAngka($('#ubDibayar').value);
+      const b = $('#ubSimpan');
+      b.disabled = true; b.textContent = 'Menyimpan…';
+      try {
+        await S.ubahPembayaranKunjungan(n, dibayarBaru);
+        toast(`${n.no} diperbarui.`);
+        tutupSheet();
+        jalankanRute();
+      } catch (e) {
+        toast(e.message || 'Gagal menyimpan.', true);
+        b.disabled = false; b.textContent = 'Simpan perubahan';
+      }
+    };
+  };
+
   const rincianNota = (jenis, n) => {
     const izin = bolehHapus(jenis, n);
     bukaSheet(`
@@ -1227,12 +1266,16 @@ async function vNota(w) {
       <div class="rincian">${ringkasNota(jenis, n)}</div>
       <button class="btn btn-primary btn-block" id="rnCetak" style="margin-top:20px;margin-bottom:12px">Cetak nota</button>
       ${izin.boleh
-        ? `<button class="btn btn-bahaya btn-block" id="rnHapus" style="margin-bottom:12px">Hapus</button>`
+        ? `${jenis === 'kunjungan' ? `<button class="btn btn-garis btn-block" id="rnUbahBayar" style="margin-bottom:12px">Ubah jumlah diterima</button>` : ''}
+           <button class="btn btn-bahaya btn-block" id="rnHapus" style="margin-bottom:12px">Hapus</button>`
         : `<p class="field-hint" style="text-align:center;margin-bottom:12px">${aman(izin.alasan)}</p>`}
       <button class="btn btn-garis btn-block" data-close>Tutup</button>`);
 
     $('#rnCetak').onclick = () => { tutupSheet(); cetakUlang(jenis, n); };
-    if (izin.boleh) $('#rnHapus').onclick = () => hapusNota(jenis, n);
+    if (izin.boleh) {
+      $('#rnHapus').onclick = () => hapusNota(jenis, n);
+      if (jenis === 'kunjungan') $('#rnUbahBayar').onclick = () => ubahDibayarKunjungan(n);
+    }
   };
 
   $$('[data-nota]').forEach(b => b.onclick = () => {
